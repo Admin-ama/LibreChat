@@ -2,13 +2,11 @@ import { useCallback } from 'react';
 import download from 'downloadjs';
 import { useParams } from 'react-router-dom';
 import exportFromJSON from 'export-from-json';
-import { useToastContext } from '@librechat/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { buildTree, QueryKeys } from 'librechat-data-provider';
 import type { TConversation, TMessage, TPreset } from 'librechat-data-provider';
-import { ScreenshotLimitError, useScreenshot } from '~/hooks/ScreenshotContext';
 import useBuildMessageTree from '~/hooks/Messages/useBuildMessageTree';
-import { NotificationSeverity } from '~/common';
+import { useScreenshot } from '~/hooks/ScreenshotContext';
 import { formatMessageText } from './format';
 import { cleanupPreset } from '~/utils';
 import { useLocalize } from '~/hooks';
@@ -35,7 +33,6 @@ export default function useExportConversation({
   recursive: boolean | 'indeterminate';
 }) {
   const queryClient = useQueryClient();
-  const { showToast } = useToastContext();
   const { captureScreenshot } = useScreenshot();
   const buildMessageTree = useBuildMessageTree();
   const localize = useLocalize();
@@ -51,21 +48,12 @@ export default function useExportConversation({
   }, [paramId, conversation?.conversationId, queryClient]);
 
   const exportScreenshot = async () => {
-    let data: Blob;
+    let data;
     try {
       data = await captureScreenshot();
     } catch (err) {
-      console.error('Failed to capture screenshot', err);
-      showToast({
-        message: localize(
-          err instanceof ScreenshotLimitError
-            ? 'com_nav_export_screenshot_too_large'
-            : 'com_nav_export_screenshot_error',
-        ),
-        severity: NotificationSeverity.ERROR,
-        showIcon: true,
-      });
-      return;
+      console.error('Failed to capture screenshot');
+      return console.error(err);
     }
     download(data, `${filename}.png`, 'image/png');
   };

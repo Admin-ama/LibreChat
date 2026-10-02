@@ -19,15 +19,11 @@ export default function createPayload(submission: t.TSubmission) {
     isContinued,
     isTemporary,
     isRegenerate,
-    compact,
     conversation,
     editedContent,
     ephemeralAgent,
     endpointOption,
     manualSkills,
-    codeApprovalMode,
-    codeEnvironmentMode,
-    codeWorkspaces,
     clientRequestId,
     recoverySteerId,
     expectedPredecessorCreatedAt,
@@ -39,9 +35,7 @@ export default function createPayload(submission: t.TSubmission) {
   };
 
   const endpoint = _e as s.EModelEndpoint;
-  /** Custom endpoint names are user-defined and may contain `/`, which would
-   * otherwise split into extra path segments and miss the `/:endpoint` route. */
-  let server = `${EndpointURLs[s.EModelEndpoint.agents]}/${encodeURIComponent(endpoint)}`;
+  let server = `${EndpointURLs[s.EModelEndpoint.agents]}/${endpoint}`;
   if (s.isAssistantsEndpoint(endpoint)) {
     server =
       EndpointURLs[(endpointType ?? endpoint) as 'assistants' | 'azureAssistants'] +
@@ -54,18 +48,12 @@ export default function createPayload(submission: t.TSubmission) {
     endpoint,
     addedConvo,
     isTemporary,
-    /** A compaction borrows the regenerate shape client-side only: the server
-     *  must see it as a compaction, never as a regenerated user turn. */
-    isRegenerate: compact === true ? undefined : isRegenerate,
-    ...(compact === true && { compact: true }),
+    isRegenerate,
     editedContent,
     conversationId,
     isContinued: !!(isEdited && isContinued),
     ephemeralAgent: s.isAssistantsEndpoint(endpoint) ? undefined : ephemeralAgent,
     manualSkills: s.isAssistantsEndpoint(endpoint) ? undefined : manualSkills,
-    codeApprovalMode: s.isAssistantsEndpoint(endpoint) ? undefined : codeApprovalMode,
-    codeEnvironmentMode: s.isAssistantsEndpoint(endpoint) ? undefined : codeEnvironmentMode,
-    codeWorkspaces: s.isAssistantsEndpoint(endpoint) ? undefined : codeWorkspaces,
     timezone: getUserTimezone(),
     clientRequestId,
     recoverySteerId,

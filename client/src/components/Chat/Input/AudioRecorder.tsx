@@ -1,17 +1,10 @@
-import { memo, useCallback, useEffect, useRef } from 'react';
+import { memo, useCallback, useRef } from 'react';
 import { MicOff } from 'lucide-react';
-import { useRecoilValue } from 'recoil';
-import {
-  IconButton,
-  useToastContext,
-  TooltipAnchor,
-  ListeningIcon,
-  Spinner,
-} from '@librechat/client';
+import { useToastContext, TooltipAnchor, ListeningIcon, Spinner } from '@librechat/client';
 import { useLocalize, useSpeechToText, useGetAudioSettings } from '~/hooks';
 import { globalAudioId, type TAskFunction } from '~/common';
 import { useChatFormContext } from '~/Providers';
-import store from '~/store';
+import { cn } from '~/utils';
 
 const isExternalSTT = (speechToTextEndpoint: string) => speechToTextEndpoint === 'external';
 export default memo(function AudioRecorder({
@@ -29,8 +22,6 @@ export default memo(function AudioRecorder({
   const localize = useLocalize();
   const { showToast } = useToastContext();
   const { speechToTextEndpoint } = useGetAudioSettings();
-  const speechSettingsInitialized = useRecoilValue(store.speechSettingsInitialized);
-  const recorderDisabled = disabled || !speechSettingsInitialized;
 
   const existingTextRef = useRef<string>('');
   const isSubmittingRef = useRef(isSubmitting);
@@ -89,41 +80,22 @@ export default memo(function AudioRecorder({
     onTranscriptionComplete,
   );
 
-  const handleStartRecording = useCallback(() => {
+  const handleStartRecording = async () => {
     existingTextRef.current = getValues('text') || '';
     startRecording();
-  }, [getValues, startRecording]);
+  };
 
-  const handleStopRecording = useCallback(() => {
+  const handleStopRecording = async () => {
     stopRecording();
     /** For browser STT, clear the reference since text was already being updated */
     if (!isExternalSTT(speechToTextEndpoint)) {
       existingTextRef.current = '';
     }
-  }, [speechToTextEndpoint, stopRecording]);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (!event.shiftKey || !event.altKey || event.code !== 'KeyL' || recorderDisabled) {
-        return;
-      }
-
-      event.preventDefault();
-      if (isListening === true) {
-        handleStopRecording();
-        return;
-      }
-
-      handleStartRecording();
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleStartRecording, handleStopRecording, isListening, recorderDisabled]);
+  };
 
   const renderIcon = () => {
     if (isListening === true) {
-      return <MicOff className="stroke-status-error" />;
+      return <MicOff className="stroke-red-500" />;
     }
     if (isLoading === true) {
       return <Spinner className="stroke-text-secondary" />;
@@ -135,20 +107,20 @@ export default memo(function AudioRecorder({
     <TooltipAnchor
       description={localize('com_ui_use_micrphone')}
       render={
-        <IconButton
+        <button
           id="audio-recorder"
           type="button"
-          variant="ghost"
-          size="theme"
-          shape="theme"
-          label={localize('com_ui_use_micrphone')}
+          aria-label={localize('com_ui_use_micrphone')}
           onClick={isListening === true ? handleStopRecording : handleStartRecording}
-          disabled={recorderDisabled}
-          className="p-1 hover:bg-surface-composer-hover"
+          disabled={disabled}
+          className={cn(
+            'flex size-9 items-center justify-center rounded-full p-1 transition-colors hover:bg-surface-hover',
+          )}
+          title={localize('com_ui_use_micrphone')}
           aria-pressed={isListening}
         >
           {renderIcon()}
-        </IconButton>
+        </button>
       }
     />
   );

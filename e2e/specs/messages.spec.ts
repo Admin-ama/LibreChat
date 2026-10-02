@@ -96,12 +96,11 @@ test.describe('Messaging suite', () => {
     const updatedTextElement = page.getByText(editText);
     expect(updatedTextElement).toBeTruthy();
 
-    // Check edit response. Nothing is typed into the editor, so the submit button reads
-    // "Rerun": reissuing an untouched request is a supported action, not a disabled one.
+    // Check edit response
     await page.getByRole('button', { name: 'edit' }).click();
     const editResponsePromise = [
       page.waitForResponse(waitForServerStream),
-      await page.getByRole('button', { name: 'Rerun', exact: true }).click(),
+      await page.getByRole('button', { name: 'Save & Submit' }).click(),
     ];
 
     const [editResponse] = (await Promise.all(editResponsePromise)) as [Response];

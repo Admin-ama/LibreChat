@@ -3,7 +3,6 @@ const { logger } = require('@librechat/data-schemas');
 const { CacheKeys } = require('librechat-data-provider');
 const getLogStores = require('~/cache/getLogStores');
 const { saveConvo } = require('~/models');
-const { resolveConversationTitle } = require('../titlePolicy');
 
 /**
  * Add title to conversation in a way that avoids memory retention.
@@ -106,7 +105,7 @@ const addTitle = async (
       return;
     }
 
-    const generatedTitle = await titlePromise;
+    const title = await titlePromise;
     if (!abortController.signal.aborted) {
       abortController.abort();
     }
@@ -114,13 +113,8 @@ const addTitle = async (
       clearTimeout(timeoutId);
     }
 
-    if (!generatedTitle) {
+    if (!title) {
       logger.debug(`[${key}] No title generated`);
-      return;
-    }
-
-    const title = resolveConversationTitle(req, generatedTitle);
-    if (title == null) {
       return;
     }
 
@@ -161,25 +155,14 @@ const addTitle = async (
     await saveConvo(
       {
         userId: req?.user?.id,
-        isTemporary: req?.resolvedConversation?.isTemporary ?? req?.body?.isTemporary,
-        expiredAt: req?.resolvedConversation?.expiredAt,
+        isTemporary: req?.body?.isTemporary,
         interfaceConfig: req?.config?.interfaceConfig,
       },
       {
         conversationId: convoId,
         title,
       },
-      {
-        context: 'api/server/services/Endpoints/agents/title.js',
-        noUpsert: true,
-        /** Metadata-only: write the title and nothing else. Without this, `saveConvo`
-         *  reads every message id and `$set`s the whole `messages` array, and an
-         *  immediate-mode title saves while the turn is still running — so a response
-         *  appending its own id between that read and that write would be erased from
-         *  the array for good. An empty append is the option's no-message path: it
-         *  skips both the read and the rewrite. */
-        appendMessageIds: [],
-      },
+      { context: 'api/server/services/Endpoints/agents/title.js', noUpsert: true },
     );
   } catch (error) {
     logger.error('Error generating title:', error);

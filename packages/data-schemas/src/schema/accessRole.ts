@@ -17,7 +17,6 @@ const accessRoleSchema: Schema<IAccessRole> = new Schema<IAccessRole>(
       type: String,
       enum: [
         'agent',
-        'codeEnvironment',
         'project',
         'file',
         'promptGroup',

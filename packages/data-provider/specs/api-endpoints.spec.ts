@@ -2,11 +2,19 @@
  * @jest-environment jsdom
  */
 import {
-  agentQueuedTurn,
+  adminUsers,
+  adminUserSearch,
+  adminUserBalance,
   buildLoginRedirectUrl,
-  getSharedLinks,
-  agentQueuedTurnsByConversation,
 } from '../src/api-endpoints';
+
+describe('admin balance endpoints', () => {
+  it('builds paginated user and balance URLs', () => {
+    expect(adminUsers({ limit: 25, offset: 50 })).toBe('/api/admin/users?limit=25&offset=50');
+    expect(adminUserSearch('ana+ops', 15)).toBe('/api/admin/users/search?q=ana%2Bops&limit=15');
+    expect(adminUserBalance('user/123')).toBe('/api/admin/users/user%2F123/balance');
+  });
+});
 
 describe('buildLoginRedirectUrl', () => {
   afterEach(() => {
@@ -75,45 +83,5 @@ describe('buildLoginRedirectUrl', () => {
     const result = buildLoginRedirectUrl('/c/loginhistory', '', '');
     expect(result).toContain('redirect_to=');
     expect(decodeURIComponent(result.split('redirect_to=')[1])).toBe('/c/loginhistory');
-  });
-});
-
-describe('getSharedLinks', () => {
-  it('encodes search and cursor values exactly once', () => {
-    const result = getSharedLinks(
-      25,
-      'createdAt',
-      'desc',
-      '100% ready & waiting',
-      '2030-01-01T00:00:00.000Z',
-    );
-
-    expect(result).toBe(
-      '/api/share?pageSize=25&sortBy=createdAt&sortDirection=desc&search=100%25%20ready%20%26%20waiting&cursor=2030-01-01T00%3A00%3A00.000Z',
-    );
-  });
-});
-
-describe('agent queued turns', () => {
-  it('encodes conversation identity exactly once', () => {
-    expect(agentQueuedTurnsByConversation('conversation/a b')).toBe(
-      '/api/agents/chat/queued-turns?conversationId=conversation%2Fa%20b',
-    );
-  });
-
-  it('encodes deduplicated known request identities as repeated bounded query values', () => {
-    expect(
-      agentQueuedTurnsByConversation('conversation/one', [
-        'request/one',
-        'request,two',
-        'request/one',
-      ]),
-    ).toBe(
-      '/api/agents/chat/queued-turns?conversationId=conversation%2Fone&clientRequestIds=request%2Fone&clientRequestIds=request%2Ctwo',
-    );
-  });
-
-  it('encodes queued-turn identity as one path segment', () => {
-    expect(agentQueuedTurn('turn/a b')).toBe('/api/agents/chat/queued-turns/turn%2Fa%20b');
   });
 });

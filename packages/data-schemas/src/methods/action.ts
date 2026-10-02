@@ -1,46 +1,42 @@
 import type { FilterQuery, Model } from 'mongoose';
-import type { ActionQuery, IAction } from '~/types';
-import { buildFilter, type FieldMap } from '~/utils/criteria';
+import type { IAction } from '~/types';
 
 const sensitiveFields = ['api_key', 'oauth_client_id', 'oauth_client_secret'] as const;
 
-const ACTION_FIELDS: FieldMap<ActionQuery> = {
-  actionId: 'action_id',
-  agentId: 'agent_id',
-  assistantId: 'assistant_id',
-  user: 'user',
-};
-
-/** Translates domain action criteria into a Mongo filter. */
-function actionFilter(query: ActionQuery): FilterQuery<IAction> {
-  return buildFilter<ActionQuery, FilterQuery<IAction>>(query, ACTION_FIELDS);
-}
-
 export function createActionMethods(mongoose: typeof import('mongoose')): {
-  getActions: (query: ActionQuery, includeSensitive?: boolean) => Promise<IAction[]>;
-  updateAction: (query: ActionQuery, updateData: Partial<IAction>) => Promise<IAction | null>;
-  deleteAction: (query: ActionQuery) => Promise<IAction | null>;
-  deleteActions: (query: ActionQuery) => Promise<number>;
+  getActions: (
+    searchParams: FilterQuery<IAction>,
+    includeSensitive?: boolean,
+  ) => Promise<IAction[]>;
+  updateAction: (
+    searchParams: FilterQuery<IAction>,
+    updateData: Partial<IAction>,
+  ) => Promise<IAction | null>;
+  deleteAction: (searchParams: FilterQuery<IAction>) => Promise<IAction | null>;
+  deleteActions: (searchParams: FilterQuery<IAction>) => Promise<number>;
 } {
   /**
    * Update an action with new data without overwriting existing properties,
    * or create a new action if it doesn't exist.
    */
   async function updateAction(
-    query: ActionQuery,
+    searchParams: FilterQuery<IAction>,
     updateData: Partial<IAction>,
   ): Promise<IAction | null> {
     const Action = mongoose.models.Action as Model<IAction>;
     const options = { new: true, upsert: true };
-    return await Action.findOneAndUpdate(actionFilter(query), updateData, options).lean<IAction>();
+    return await Action.findOneAndUpdate(searchParams, updateData, options).lean<IAction>();
   }
 
   /**
-   * Retrieves all actions that match the given criteria.
+   * Retrieves all actions that match the given search parameters.
    */
-  async function getActions(query: ActionQuery, includeSensitive = false): Promise<IAction[]> {
+  async function getActions(
+    searchParams: FilterQuery<IAction>,
+    includeSensitive = false,
+  ): Promise<IAction[]> {
     const Action = mongoose.models.Action as Model<IAction>;
-    const actions = await Action.find(actionFilter(query)).lean<IAction[]>();
+    const actions = await Action.find(searchParams).lean<IAction[]>();
 
     if (!includeSensitive) {
       for (let i = 0; i < actions.length; i++) {
@@ -61,19 +57,19 @@ export function createActionMethods(mongoose: typeof import('mongoose')): {
   }
 
   /**
-   * Deletes an action by criteria.
+   * Deletes an action by params.
    */
-  async function deleteAction(query: ActionQuery): Promise<IAction | null> {
+  async function deleteAction(searchParams: FilterQuery<IAction>): Promise<IAction | null> {
     const Action = mongoose.models.Action as Model<IAction>;
-    return await Action.findOneAndDelete(actionFilter(query)).lean<IAction>();
+    return await Action.findOneAndDelete(searchParams).lean<IAction>();
   }
 
   /**
-   * Deletes actions by criteria.
+   * Deletes actions by params.
    */
-  async function deleteActions(query: ActionQuery): Promise<number> {
+  async function deleteActions(searchParams: FilterQuery<IAction>): Promise<number> {
     const Action = mongoose.models.Action as Model<IAction>;
-    const result = await Action.deleteMany(actionFilter(query));
+    const result = await Action.deleteMany(searchParams);
     return result.deletedCount;
   }
 

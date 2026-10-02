@@ -13,11 +13,6 @@ export interface CreateSessionOptions {
   expiresIn?: number;
 }
 
-export interface UpsertSessionOptions {
-  expiration: Date;
-  tenantId?: string;
-}
-
 export interface UpdateExpirationOptions {
   /** Duration in milliseconds for session expiry. Default: 7 days */
   expiresIn?: number;

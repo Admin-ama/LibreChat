@@ -1,39 +1,6 @@
 import { logger } from '@librechat/data-schemas';
-import { Constants } from 'librechat-data-provider';
 
-import type { MCPRuntimeRequestBody, RequestScopedMCPConnectionStore } from './types';
-
-export type { MCPRuntimeRequestBody } from './types';
-
-/**
- * Builds the complete request context that runtime MCP placeholders may resolve.
- * An explicit null parent means a known root turn and becomes the root sentinel.
- * An omitted parent stays omitted so protocols without parent-message identity
- * fail closed for configurations that require that BODY placeholder.
- */
-export function createMCPRuntimeRequestBody({
-  messageId,
-  conversationId,
-  parentMessageId,
-  codeEnvironmentMode,
-  codeWorkspaces,
-}: {
-  messageId: string;
-  conversationId: string;
-  parentMessageId?: string | null;
-  codeEnvironmentMode?: MCPRuntimeRequestBody['codeEnvironmentMode'];
-  codeWorkspaces?: MCPRuntimeRequestBody['codeWorkspaces'];
-}): MCPRuntimeRequestBody {
-  return {
-    messageId,
-    conversationId,
-    ...(codeEnvironmentMode !== undefined && { codeEnvironmentMode }),
-    ...(codeWorkspaces !== undefined && { codeWorkspaces }),
-    ...(parentMessageId !== undefined && {
-      parentMessageId: parentMessageId ?? Constants.NO_PARENT,
-    }),
-  };
-}
+import type { RequestScopedMCPConnectionStore } from './types';
 
 export interface MCPRequestContext extends RequestScopedMCPConnectionStore {
   cleanupStarted: boolean;
@@ -54,7 +21,6 @@ interface MCPResponseLike {
 
 interface Disconnectable {
   disconnect: () => Promise<unknown> | unknown;
-  dispose?: () => Promise<unknown> | unknown;
 }
 
 const contexts = new WeakMap<object, MCPRequestContext>();
@@ -84,36 +50,29 @@ export async function cleanupMCPRequestContext(context?: MCPRequestContext): Pro
   }
   context.cleanupStarted = true;
 
-  const connections = new Map<Disconnectable, string>();
-  for (const [connectionKey, connection] of context.connections) {
+  const connections = new Set<Disconnectable>();
+  for (const connection of context.connections.values()) {
     if (isDisconnectable(connection)) {
-      connections.set(connection, connectionKey);
+      connections.add(connection);
     }
   }
 
-  const pending = Array.from(context.pending.entries());
+  const pending = Array.from(context.pending.values());
   if (pending.length > 0) {
-    const settled = await Promise.allSettled(pending.map(([, promise]) => promise));
-    for (let index = 0; index < settled.length; index++) {
-      const result = settled[index];
+    const settled = await Promise.allSettled(pending);
+    for (const result of settled) {
       if (result.status === 'fulfilled' && isDisconnectable(result.value)) {
-        connections.set(result.value, pending[index][0]);
+        connections.add(result.value);
       }
     }
   }
 
   await Promise.allSettled(
-    Array.from(connections).map(async ([connection, connectionKey]) => {
+    Array.from(connections).map(async (connection) => {
       try {
-        if (context.disposeConnection) {
-          await context.disposeConnection(connectionKey, connection);
-        } else if (connection.dispose) {
-          await connection.dispose();
-        } else {
-          await connection.disconnect();
-        }
-      } catch {
-        logger.warn('[MCP Request Context] Failed to dispose request-scoped connection');
+        await connection.disconnect();
+      } catch (error) {
+        logger.warn('[MCP Request Context] Failed to disconnect request-scoped connection', error);
       }
     }),
   );
@@ -127,8 +86,8 @@ function isResponseFinished(res?: MCPResponseLike): boolean {
 }
 
 function runCleanup(context: MCPRequestContext): void {
-  cleanupMCPRequestContext(context).catch(() => {
-    logger.warn('[MCP Request Context] Cleanup failed');
+  cleanupMCPRequestContext(context).catch((error) => {
+    logger.warn('[MCP Request Context] Cleanup failed', error);
   });
 }
 

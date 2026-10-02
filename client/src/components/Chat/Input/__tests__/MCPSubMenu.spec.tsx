@@ -1,16 +1,11 @@
 import React from 'react';
 import * as Ariakit from '@ariakit/react';
 import userEvent from '@testing-library/user-event';
-import { render, screen, within, waitFor } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import MCPSubMenu from '../MCPSubMenu';
 
 const mockToggleServerSelection = jest.fn();
 const mockSetIsPinned = jest.fn();
-const mockMCPRefresh = jest.fn();
-
-jest.mock('~/hooks/MCP/useMCPRefresh', () => ({
-  useMCPRefresh: (options: { enabled: boolean }) => mockMCPRefresh(options),
-}));
 
 const defaultMcpServerManager = {
   isPinned: true,
@@ -90,7 +85,6 @@ describe('MCPSubMenu', () => {
 
   it('renders the submenu trigger with default placeholder', () => {
     renderSubMenu();
-    expect(mockMCPRefresh).toHaveBeenLastCalledWith({ enabled: false });
     expect(screen.getByText('MCP Servers')).toBeInTheDocument();
   });
 
@@ -100,20 +94,16 @@ describe('MCPSubMenu', () => {
     expect(screen.queryByText('MCP Servers')).not.toBeInTheDocument();
   });
 
-  it('refreshes the unpinned submenu while open and stops on close', async () => {
+  it('opens submenu and shows real server items', async () => {
     const user = userEvent.setup();
-    mockMcpServerManager = { ...defaultMcpServerManager, isPinned: false };
     renderSubMenu();
 
     await user.click(screen.getByText('MCP Servers'));
 
-    expect(mockMCPRefresh).toHaveBeenLastCalledWith({ enabled: true });
     const menu = screen.getByRole('menu', { name: /com_ui_mcp_servers/i });
     expect(menu).toBeVisible();
     expect(within(menu).getByRole('menuitemcheckbox', { name: /Server A/i })).toBeInTheDocument();
     expect(within(menu).getByRole('menuitemcheckbox', { name: /Server B/i })).toBeInTheDocument();
-    await user.keyboard('{Escape}');
-    await waitFor(() => expect(mockMCPRefresh).toHaveBeenLastCalledWith({ enabled: false }));
   });
 
   it('keeps menu open after toggling a server item', async () => {

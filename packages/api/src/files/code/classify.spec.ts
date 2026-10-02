@@ -79,14 +79,18 @@ describe('classifyCodeArtifact', () => {
     });
   });
 
-  describe('presentation', () => {
-    it.each([
-      ['slides.pptx', 'application/octet-stream'],
-      ['template.potx', 'application/octet-stream'],
-      ['unknown', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'],
-      ['unknown', 'application/vnd.openxmlformats-officedocument.presentationml.template'],
-    ])('classifies %s with MIME %s as a presentation', (name, mime) => {
-      expect(classifyCodeArtifact(name, mime)).toBe('presentation');
+  describe('pptx', () => {
+    it('classifies .pptx by extension', () => {
+      expect(classifyCodeArtifact('slides.pptx', 'application/octet-stream')).toBe('pptx');
+    });
+
+    it('classifies pptx by mime', () => {
+      expect(
+        classifyCodeArtifact(
+          'unknown',
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        ),
+      ).toBe('pptx');
     });
   });
 

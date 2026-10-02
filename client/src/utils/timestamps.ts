@@ -109,6 +109,10 @@ export function cleanupTimestampedStorage(): void {
     }
 
     keysToRemove.forEach((key) => localStorage.removeItem(key));
+
+    if (keysToRemove.length > 0) {
+      console.log(`Cleaned up ${keysToRemove.length} old localStorage entries`);
+    }
   } catch (error) {
     console.error('Error during cleanup of timestamped storage:', error);
   }

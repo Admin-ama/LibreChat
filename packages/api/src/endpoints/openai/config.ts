@@ -1,17 +1,18 @@
+import { Agent } from 'undici';
 import { Providers } from '@librechat/agents';
-import { Agent, fetch as undiciFetch } from 'undici';
 import { KnownEndpoints, EModelEndpoint, ReasoningParameterFormat } from 'librechat-data-provider';
 import type { Dispatcher } from 'undici';
 import type * as t from '~/types';
 import { getGoogleConfig, stripGeminiFlashBlockedParams } from '~/endpoints/google/llm';
 import { getLLMConfig as getAnthropicLLMConfig } from '~/endpoints/anthropic/llm';
 import { createSSRFSafeAgents, createSSRFSafeUndiciConnect } from '~/auth';
-import { getDirectDispatcher, getProxyDispatcher } from '~/utils/proxy';
 import { getOpenAILLMConfig, extractDefaultParams } from './llm';
-import { constructAzureResponsesURL } from '~/utils/azure';
 import { transformToOpenAIConfig } from './transform';
+import { getProxyDispatcher } from '~/utils/proxy';
+import { constructAzureURL } from '~/utils/azure';
 import { createFetch } from '~/utils/generators';
 import { mergeHeaders } from '~/utils/headers';
+import { createOpenRouterFetch } from './openrouter';
 
 type Fetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 type FetchOptions = RequestInit & { dispatcher?: Dispatcher };
@@ -235,7 +236,7 @@ export function getOpenAIConfig(
         'HTTP-Referer': 'https://librechat.ai',
         'X-Title': 'LibreChat',
         'X-OpenRouter-Title': 'LibreChat',
-        'X-OpenRouter-Categories': 'general-chat,personal-agent,programming-app',
+        'X-OpenRouter-Categories': 'general-chat,personal-agent',
       },
       headers,
     );
@@ -247,11 +248,9 @@ export function getOpenAIConfig(
     configOptions.defaultQuery = defaultQuery;
   }
 
-  const transportTimeouts = options.transportTimeouts;
   if (shouldProtectUserBaseURL) {
     mergeFetchOptions(configOptions, {
       dispatcher: new Agent({
-        ...transportTimeouts,
         connect: createSSRFSafeUndiciConnect(
           options.allowedAddresses,
           getEffectiveURLPort(baseURL),
@@ -259,16 +258,11 @@ export function getOpenAIConfig(
       }),
       redirect: 'error',
     });
-  } else if (transportTimeouts != null) {
-    const proxyDispatcher = getProxyDispatcher(proxy, transportTimeouts);
-    mergeFetchOptions(configOptions, {
-      dispatcher: proxyDispatcher ?? getDirectDispatcher(transportTimeouts),
-    });
-  } else {
-    const proxyDispatcher = getProxyDispatcher(proxy);
-    if (proxyDispatcher) {
-      mergeFetchOptions(configOptions, { dispatcher: proxyDispatcher });
-    }
+  }
+
+  const proxyDispatcher = getProxyDispatcher(proxy);
+  if (proxyDispatcher && !shouldProtectUserBaseURL) {
+    mergeFetchOptions(configOptions, { dispatcher: proxyDispatcher });
   }
 
   if (azure && !isAnthropic) {
@@ -277,21 +271,20 @@ export function getOpenAIConfig(
         return;
       }
 
-      const responsesURL = constructAzureResponsesURL(configOptions.baseURL, azure);
-      const urlQuery = Object.fromEntries(responsesURL.searchParams);
-      responsesURL.search = '';
-      responsesURL.hash = '';
-      configOptions.baseURL = responsesURL.toString();
+      const updatedUrl = configOptions.baseURL?.replace(/\/deployments(?:\/.*)?$/, '/v1');
+
+      configOptions.baseURL = constructAzureURL({
+        baseURL: updatedUrl || 'https://${INSTANCE_NAME}.openai.azure.com/openai/v1',
+        azureOptions: azure,
+      });
 
       configOptions.defaultHeaders = {
         ...configOptions.defaultHeaders,
         'api-key': apiKey,
       };
       configOptions.defaultQuery = {
-        ...urlQuery,
         ...configOptions.defaultQuery,
-        'api-version':
-          configOptions.defaultQuery?.['api-version'] ?? urlQuery['api-version'] ?? 'preview',
+        'api-version': configOptions.defaultQuery?.['api-version'] ?? 'preview',
       };
     };
 
@@ -303,23 +296,17 @@ export function getOpenAIConfig(
   }
 
   if (directEndpoint === true && configOptions?.baseURL != null) {
-    const directURL = configOptions.baseURL;
-    if (transportTimeouts != null) {
-      /** Keep the exact URL, but use the same proxy/SSRF/timeout policy as SDK requests. */
-      configOptions.fetch = ((_url: string | URL | Request, init?: RequestInit) =>
-        undiciFetch(directURL, {
-          ...(init as Parameters<typeof undiciFetch>[1]),
-          // These options are constructed above with an Undici dispatcher, not another SDK runtime.
-          ...(configOptions.fetchOptions as Parameters<typeof undiciFetch>[1]),
-        })) as unknown as Fetch;
-    } else {
-      configOptions.fetch = createFetch({
-        directEndpoint,
-        reverseProxyUrl: directURL,
-        ssrfAgents,
-        redirect: shouldProtectUserBaseURL ? 'error' : undefined,
-      }) as unknown as Fetch;
-    }
+    configOptions.fetch = createFetch({
+      directEndpoint: directEndpoint,
+      reverseProxyUrl: configOptions?.baseURL,
+      ssrfAgents,
+      redirect: shouldProtectUserBaseURL ? 'error' : undefined,
+    }) as unknown as Fetch;
+  }
+
+  const openRouterModels = llmConfig.modelKwargs?.models;
+  if (useOpenRouter && Array.isArray(openRouterModels) && openRouterModels.length > 0) {
+    configOptions.fetch = createOpenRouterFetch(configOptions.fetch as Fetch | undefined);
   }
 
   const result: t.OpenAIConfigResult = {

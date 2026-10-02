@@ -42,9 +42,8 @@ jest.mock('~/server/services/MCP', () => ({
 }));
 
 jest.mock('~/server/services/ToolService', () => ({
-  isFatalAgentInitializationError: (error, { signal } = {}) =>
-    (signal?.aborted === true && (error === signal.reason || error?.name === 'AbortError')) ||
-    ['AGENT_EXPECTED_MCP_TOOLS_UNAVAILABLE', 'resource_recovery_required'].includes(error?.code),
+  isExpectedMCPToolsUnavailableError: (error) =>
+    error?.code === 'AGENT_EXPECTED_MCP_TOOLS_UNAVAILABLE',
 }));
 
 jest.mock('./skillDeps', () => ({
@@ -60,7 +59,7 @@ jest.mock('~/models', () => ({
 }));
 
 const { processAddedConvo } = require('./addedConvo');
-const { Constants, ErrorTypes } = require('librechat-data-provider');
+const { Constants } = require('librechat-data-provider');
 
 const makeReq = () => ({ user: { id: 'u1', role: 'USER' } });
 
@@ -120,23 +119,6 @@ describe('processAddedConvo', () => {
     );
   });
 
-  /** The added convo re-hydrates the same conversation's prior-turn files, so a
-   *  denied `FILE_SEARCH` grant has to travel with it — otherwise the parallel
-   *  agent primes the search files the primary just skipped. `undefined` stays
-   *  `undefined`, which leaves priming unconditional for callers that never
-   *  resolved the grant. */
-  it.each([true, false, undefined])(
-    'forwards fileSearchAvailable=%s verbatim to the added-convo initializeAgent call',
-    async (fileSearchAvailable) => {
-      await processAddedConvo(baseParams({ fileSearchAvailable }));
-
-      expect(mockInitializeAgent).toHaveBeenCalledWith(
-        expect.objectContaining({ fileSearchAvailable }),
-        expect.anything(),
-      );
-    },
-  );
-
   it('forwards codeEnvAvailable=false verbatim (not coerced to undefined)', async () => {
     /* Symmetric coverage: if the runtime gate is off for the primary, the
        parallel agent must not accidentally re-enable code execution via a
@@ -161,30 +143,14 @@ describe('processAddedConvo', () => {
     );
   });
 
-  it.each([
-    ['AGENT_EXPECTED_MCP_TOOLS_UNAVAILABLE', 503],
-    [ErrorTypes.RESOURCE_RECOVERY_REQUIRED, 409],
-  ])('propagates fatal %s failures from an added parallel agent', async (code, statusCode) => {
-    const toolError = Object.assign(new Error(`Added agent failed with ${code}`), {
-      code,
-      statusCode,
+  it('propagates an expected-MCP-tools failure from an added parallel agent', async () => {
+    const toolError = Object.assign(new Error('Added agent expected MCP tools are unavailable'), {
+      code: 'AGENT_EXPECTED_MCP_TOOLS_UNAVAILABLE',
+      statusCode: 503,
     });
     mockInitializeAgent.mockRejectedValueOnce(toolError);
 
     await expect(processAddedConvo(baseParams())).rejects.toBe(toolError);
-  });
-
-  it('forwards and propagates owning-run cancellation from added-agent initialization', async () => {
-    const controller = new AbortController();
-    const reason = new Error('parallel agent stopped');
-    controller.abort(reason);
-    mockInitializeAgent.mockRejectedValueOnce(reason);
-
-    await expect(processAddedConvo(baseParams({ signal: controller.signal }))).rejects.toBe(reason);
-    expect(mockInitializeAgent).toHaveBeenCalledWith(
-      expect.objectContaining({ signal: controller.signal }),
-      expect.anything(),
-    );
   });
 
   it('keeps deployment-aware skill metadata on a persisted added-agent config', async () => {

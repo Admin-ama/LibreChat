@@ -9,13 +9,12 @@ const { CacheKeys, ErrorTypes, SystemRoles } = require('librechat-data-provider'
 const {
   isEnabled,
   logHeaders,
-  logOpenIdRequestBody,
+  safeStringify,
   findOpenIDUser,
   getOpenIdEmail,
   getOpenIdIssuer,
   getBalanceConfig,
   selectOpenIdRole,
-  getTokenCacheTtlMs,
   getAvatarSaveParams,
   isEmailDomainAllowed,
   getAvatarFileStrategy,
@@ -24,7 +23,6 @@ const {
   getOpenIdRoleSyncOptions,
   getOpenIdRolesForOpenIdSync,
   getLibreChatRolesForOpenIdSync,
-  DEFAULT_OAUTH_TOKEN_TTL_SECONDS,
 } = require('@librechat/api');
 const { getStrategyFunctions } = require('~/server/services/Files/strategies');
 const { resizeAvatar } = require('~/server/services/Files/images/avatar');
@@ -49,7 +47,15 @@ async function customFetch(url, options) {
     logger.debug(`[openidStrategy] Request method: ${options.method || 'GET'}`);
     logger.debug(`[openidStrategy] Request headers: ${logHeaders(options.headers)}`);
     if (options.body) {
-      logger.debug(`[openidStrategy] Request body: ${logOpenIdRequestBody(options.body)}`);
+      let bodyForLogging = '';
+      if (options.body instanceof URLSearchParams) {
+        bodyForLogging = options.body.toString();
+      } else if (typeof options.body === 'string') {
+        bodyForLogging = options.body;
+      } else {
+        bodyForLogging = safeStringify(options.body);
+      }
+      logger.debug(`[openidStrategy] Request body: ${bodyForLogging}`);
     }
   }
 
@@ -182,7 +188,7 @@ const exchangeAccessTokenIfNeeded = async (config, accessToken, sub, fromCache =
       {
         access_token: grantResponse.access_token,
       },
-      getTokenCacheTtlMs(grantResponse.expires_in, DEFAULT_OAUTH_TOKEN_TTL_SECONDS),
+      grantResponse.expires_in * 1000,
     );
     return grantResponse.access_token;
   }
@@ -364,11 +370,12 @@ async function exchangeTokenForOverage(accessToken, sub) {
     );
   }
 
-  await tokensCache.set(
-    cacheKey,
-    { access_token: grantResponse.access_token },
-    getTokenCacheTtlMs(grantResponse.expires_in, DEFAULT_OAUTH_TOKEN_TTL_SECONDS),
-  );
+  const ttlMs =
+    Number.isFinite(grantResponse.expires_in) && grantResponse.expires_in > 0
+      ? grantResponse.expires_in * 1000
+      : 3600 * 1000;
+
+  await tokensCache.set(cacheKey, { access_token: grantResponse.access_token }, ttlMs);
 
   return grantResponse.access_token;
 }

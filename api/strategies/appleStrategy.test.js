@@ -32,7 +32,6 @@ jest.mock('@librechat/api', () => ({
 }));
 jest.mock('~/models', () => ({
   findUser: jest.fn(),
-  updateUser: jest.fn(),
 }));
 jest.mock('~/server/services/Config', () => ({
   getAppConfig: jest.fn().mockResolvedValue({

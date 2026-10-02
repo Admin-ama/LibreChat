@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import { MCPIcon } from '@librechat/client';
 import type { MCPServerDefinition } from '~/hooks/MCP/useMCPServerManager';
 import { getSelectedServerIcons } from './mcpServerUtils';
-import CustomIcon from '~/components/ui/CustomIcon';
 import { cn } from '~/utils';
 
 interface StackedMCPIconsProps {
@@ -75,10 +74,10 @@ export default function StackedMCPIcons({
           style={{ zIndex: icons.length - index }}
         >
           {icon.iconPath ? (
-            <CustomIcon
+            <img
               src={icon.iconPath}
               alt={icon.displayName}
-              className={cn('rounded-full object-cover text-text-primary', sizes.icon)}
+              className={cn('rounded-full object-cover', sizes.icon)}
             />
           ) : (
             <MCPIcon className={cn('text-text-primary', sizes.icon)} />

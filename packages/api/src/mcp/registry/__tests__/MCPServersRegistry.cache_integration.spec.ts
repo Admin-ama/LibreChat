@@ -67,10 +67,6 @@ describe('MCPServersRegistry Redis Integration Tests', () => {
     process.env.REDIS_KEY_PREFIX =
       process.env.REDIS_KEY_PREFIX ??
       `MCPServersRegistry-IntegrationTest-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-    // The read-through caches encrypt entries before they reach the shared store
-    process.env.CREDS_KEY =
-      process.env.CREDS_KEY ?? '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
-    process.env.CREDS_IV = process.env.CREDS_IV ?? '0123456789abcdef0123456789abcdef';
 
     // Import modules after setting env vars
     const registryModule = await import('../MCPServersRegistry');
@@ -125,8 +121,8 @@ describe('MCPServersRegistry Redis Integration Tests', () => {
       const keysToDelete: string[] = [];
 
       // Collect all keys first
-      for await (const page of keyvRedisClient.scanIterator({ MATCH: pattern })) {
-        keysToDelete.push(...page);
+      for await (const key of keyvRedisClient.scanIterator({ MATCH: pattern })) {
+        keysToDelete.push(key);
       }
 
       // Delete in parallel for cluster mode efficiency
@@ -248,7 +244,7 @@ describe('MCPServersRegistry Redis Integration Tests', () => {
       await registry.addServer('server2', testRawConfig, 'CACHE');
       await registry.addServer('server3', testRawConfig, 'CACHE');
 
-      await registry['readThroughCacheAll'].invalidateAll();
+      await registry['readThroughCacheAll'].clear();
 
       const cacheRepoGetAllSpy = jest.spyOn(registry['cacheConfigsRepo'], 'getAll');
 
@@ -272,7 +268,7 @@ describe('MCPServersRegistry Redis Integration Tests', () => {
     it('should handle different userIds independently', async () => {
       await registry.addServer('shared_server', testRawConfig, 'CACHE');
 
-      await registry['readThroughCacheAll'].invalidateAll();
+      await registry['readThroughCacheAll'].clear();
 
       const cacheRepoGetAllSpy = jest.spyOn(registry['cacheConfigsRepo'], 'getAll');
 
@@ -294,7 +290,7 @@ describe('MCPServersRegistry Redis Integration Tests', () => {
         await registry.addServer(`stress_server_${i}`, testRawConfig, 'CACHE');
       }
 
-      await registry['readThroughCacheAll'].invalidateAll();
+      await registry['readThroughCacheAll'].clear();
 
       const concurrentCalls = 50;
       const startTime = Date.now();
@@ -324,7 +320,7 @@ describe('MCPServersRegistry Redis Integration Tests', () => {
         'CACHE',
       );
 
-      await registry['readThroughCacheAll'].invalidateAll();
+      await registry['readThroughCacheAll'].clear();
 
       const results = await Promise.all([
         registry.getAllServerConfigs(),
@@ -341,104 +337,6 @@ describe('MCPServersRegistry Redis Integration Tests', () => {
           expect(result[key]).toMatchObject(firstResult[key]);
         }
       }
-    });
-  });
-
-  describe('reinspection across replicas', () => {
-    it('lands one recovery when two replicas reinspect the same stub', async () => {
-      const replica = new MCPServersRegistry({} as typeof import('mongoose'), [
-        'replica.example.com',
-      ]);
-      await registry.addServerStub('recovering_server', testRawConfig, 'CACHE');
-      const replicaMemo = await replica.getAllServerConfigs();
-
-      const inspect = jest.mocked(MCPServerInspector.inspect).getMockImplementation()!;
-      let releaseReplica!: () => void;
-      const replicaHeld = new Promise<void>((resolve) => {
-        releaseReplica = resolve;
-      });
-      let markReplicaInspecting!: () => void;
-      const replicaInspecting = new Promise<void>((resolve) => {
-        markReplicaInspecting = resolve;
-      });
-      jest
-        .spyOn(MCPServerInspector, 'inspect')
-        .mockImplementation(async (serverName, rawConfig, connection, domains, addresses) => {
-          if (domains?.includes('replica.example.com')) {
-            markReplicaInspecting();
-            await replicaHeld;
-          }
-          return inspect(serverName, rawConfig, connection, domains, addresses);
-        });
-
-      const replicaReinspection = replica.reinspectServer('recovering_server', 'CACHE');
-      await replicaInspecting;
-      const { config: recovered } = await registry.reinspectServer('recovering_server', 'CACHE');
-      releaseReplica();
-      const { config: replicaConfig } = await replicaReinspection;
-
-      expect(recovered.inspectionFailed).toBeUndefined();
-      expect(replicaConfig).toEqual(recovered);
-      expect(await registry['cacheConfigsRepo'].get('recovering_server')).toEqual(recovered);
-      expect(replicaMemo.recovering_server.inspectionFailed).toBe(true);
-      expect((await replica.getAllServerConfigs()).recovering_server).toEqual(recovered);
-    });
-
-    it('settles a failed inspection against a recovery another replica stored', async () => {
-      const replica = new MCPServersRegistry({} as typeof import('mongoose'), [
-        'replica.example.com',
-      ]);
-      await registry.addServerStub('flaky_server', testRawConfig, 'CACHE');
-
-      const inspect = jest.mocked(MCPServerInspector.inspect).getMockImplementation()!;
-      let failReplica!: () => void;
-      const replicaHeld = new Promise<void>((resolve) => {
-        failReplica = resolve;
-      });
-      let markReplicaInspecting!: () => void;
-      const replicaInspecting = new Promise<void>((resolve) => {
-        markReplicaInspecting = resolve;
-      });
-      jest
-        .spyOn(MCPServerInspector, 'inspect')
-        .mockImplementation(async (serverName, rawConfig, connection, domains, addresses) => {
-          if (domains?.includes('replica.example.com')) {
-            markReplicaInspecting();
-            await replicaHeld;
-            throw new Error('connect ECONNREFUSED');
-          }
-          return inspect(serverName, rawConfig, connection, domains, addresses);
-        });
-
-      const replicaReinspection = replica.reinspectServer('flaky_server', 'CACHE');
-      await replicaInspecting;
-      const { config: recovered } = await registry.reinspectServer('flaky_server', 'CACHE');
-      await expect(replica['cacheConfigsRepo'].get('flaky_server')).resolves.toMatchObject({
-        inspectionFailed: true,
-      });
-      failReplica();
-
-      await expect(replicaReinspection).resolves.toEqual({
-        serverName: 'flaky_server',
-        config: recovered,
-      });
-    });
-
-    it('returns a recovery another replica stored without inspecting while its snapshot holds the stub', async () => {
-      const replica = new MCPServersRegistry({} as typeof import('mongoose'));
-      await registry.addServerStub('recovered_server', testRawConfig, 'CACHE');
-      await expect(replica['cacheConfigsRepo'].get('recovered_server')).resolves.toMatchObject({
-        inspectionFailed: true,
-      });
-      const { config: recovered } = await registry.reinspectServer('recovered_server', 'CACHE');
-      const inspectSpy = jest.spyOn(MCPServerInspector, 'inspect');
-      inspectSpy.mockClear();
-
-      await expect(replica.reinspectServer('recovered_server', 'CACHE')).resolves.toEqual({
-        serverName: 'recovered_server',
-        config: recovered,
-      });
-      expect(inspectSpy.mock.calls).toHaveLength(0);
     });
   });
 });

@@ -5,7 +5,6 @@ jest.mock('@librechat/data-schemas', () => ({
 }));
 
 jest.mock('@librechat/agents', () => ({
-  ...jest.requireActual('@librechat/agents'),
   getCodeBaseURL: jest.fn(() => 'http://localhost:8000'),
 }));
 
@@ -21,23 +20,14 @@ jest.mock('@librechat/api', () => {
   const http = require('http');
   const https = require('https');
   return {
-    processCodeOutput: jest.requireActual('@librechat/api').processCodeOutput,
-    resolveDownloadPath: (file) => file.storageKey || file.filepath,
     logAxiosError: jest.fn(),
     getBasePath: jest.fn(() => ''),
     sanitizeArtifactPath: mockSanitizeArtifactPath,
     flattenArtifactPath: mockFlattenArtifactPath,
     createAxiosInstance: jest.fn(() => mockAxios),
     getCodeApiAuthHeaders: jest.fn(async () => ({})),
-    codeExecutionHeaders: jest.fn(() => ({})),
-    getCodeExecutionBaseUrl: jest.fn(() => 'http://localhost:8000'),
-    CODE_API_EXPECTED_PROFILE_HEADER: 'X-CodeAPI-Expected-Profile',
     classifyCodeArtifact: jest.fn(() => 'other'),
     extractCodeArtifactText: jest.fn(async () => null),
-    getBoundedCodeOutputByteLimit: (configured) =>
-      typeof configured === 'number' && Number.isFinite(configured) && configured > 0
-        ? Math.min(configured, 64 * 1024 * 1024)
-        : 64 * 1024 * 1024,
     /* `processCodeOutput` calls this to derive the trust flag persisted
      * on `IMongoFile.textFormat` — Codex P1 review on PR #12934. The
      * mock returns null in lockstep with the null `text` above so
@@ -49,7 +39,7 @@ jest.mock('@librechat/api', () => {
     withTimeout: async (promise) => promise,
     /* These traversal cases all use non-office filenames — keep the
      * inline (non-finalize) path so existing assertions on a single
-     * commitCodeFile call hold. */
+     * createFile call hold. */
     hasOfficeHtmlPath: jest.fn(() => false),
     /* Identity-helper stub mirroring `packages/api/src/files/code/identity.ts`.
      * `processCodeOutput` calls this for every output download URL;
@@ -80,7 +70,6 @@ jest.mock('~/models', () => ({
   getFiles: jest.fn().mockResolvedValue([]),
   updateFile: jest.fn(),
   claimCodeFile: jest.fn().mockResolvedValue({ file_id: 'mock-uuid', usage: 0 }),
-  commitCodeFile: jest.fn().mockResolvedValue(true),
 }));
 
 const mockSaveBuffer = jest.fn().mockResolvedValue('/uploads/user123/mock-uuid__output.csv');
@@ -108,7 +97,7 @@ jest.mock('~/server/services/Files/retention', () => ({
 }));
 
 const { getRetentionExpiry } = require('~/server/services/Files/retention');
-const { commitCodeFile } = require('~/models');
+const { createFile } = require('~/models');
 const { processCodeOutput } = require('../process');
 
 const baseParams = {
@@ -154,7 +143,7 @@ describe('processCodeOutput path traversal protection', () => {
     mockSanitizeArtifactPath.mockReturnValueOnce('safe-output.csv');
     await processCodeOutput({ ...baseParams, name: 'unsafe/../../output.csv' });
 
-    const fileArg = commitCodeFile.mock.calls[0][0];
+    const fileArg = createFile.mock.calls[0][0];
     expect(fileArg.filename).toBe('safe-output.csv');
     expect(fileArg.tenantId).toBe('tenantA');
   });
@@ -176,7 +165,7 @@ describe('processCodeOutput path traversal protection', () => {
     await processCodeOutput({ ...baseParams, name: '../../../chart.png' });
 
     expect(mockSanitizeArtifactPath).toHaveBeenCalledWith('../../../chart.png');
-    const fileArg = commitCodeFile.mock.calls[0][0];
+    const fileArg = createFile.mock.calls[0][0];
     expect(fileArg.filename).toBe('safe-chart.png');
     expect(fileArg.tenantId).toBe('tenantA');
   });

@@ -1,7 +1,7 @@
 import React from 'react';
+import { UIResourceRenderer } from '@mcp-ui/client';
 import { useOptionalMessagesConversation, useOptionalMessagesOperations } from '~/Providers';
 import { useConversationUIResources } from '~/hooks/Messages/useConversationUIResources';
-import UIResourceRenderer, { isSupportedUIResource } from './Renderer';
 import { handleUIAction } from '~/utils';
 import { useLocalize } from '~/hooks';
 
@@ -26,16 +26,12 @@ export function MCPUIResource(props: MCPUIResourceProps) {
 
   if (!uiResource) {
     return (
-      <span className="inline-flex items-center rounded bg-surface-tertiary px-2 py-1 text-xs font-medium text-text-secondary">
+      <span className="inline-flex items-center rounded bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">
         {localize('com_ui_ui_resource_not_found', {
           0: resourceId ?? '',
         })}
       </span>
     );
-  }
-
-  if (!isSupportedUIResource(uiResource)) {
-    return null;
   }
 
   try {
@@ -46,6 +42,7 @@ export function MCPUIResource(props: MCPUIResourceProps) {
           onUIAction={async (result) => handleUIAction(result, ask)}
           htmlProps={{
             autoResizeIframe: { width: true, height: true },
+            sandboxPermissions: 'allow-popups',
           }}
         />
       </span>
@@ -53,7 +50,7 @@ export function MCPUIResource(props: MCPUIResourceProps) {
   } catch (error) {
     console.error('Error rendering UI resource:', error);
     return (
-      <span className="inline-flex items-center rounded bg-status-error-subtle px-2 py-1 text-xs font-medium text-status-error">
+      <span className="inline-flex items-center rounded bg-red-50 px-2 py-1 text-xs font-medium text-red-600">
         {localize('com_ui_ui_resource_error', { 0: uiResource.name || resourceId })}
       </span>
     );

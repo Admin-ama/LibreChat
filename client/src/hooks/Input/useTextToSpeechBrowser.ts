@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useSyncExternalStore } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 import { useRecoilValue } from 'recoil';
 import type { VoiceOption } from '~/common';
 import { subscribeSpeechVoices, getSpeechVoicesSnapshot } from '~/utils';
@@ -24,52 +24,45 @@ function useTextToSpeechBrowser({
     return filteredVoices.map((v): VoiceOption => ({ value: v.name, label: v.name }));
   }, [availableVoices, cloudBrowserVoices]);
 
-  /** Reports whether an utterance was actually queued: autoplay must not mark a run as
-   *  played when the voice list has not loaded yet, or the message is never spoken. */
-  const generateSpeechLocal = useCallback(
-    (text: string): boolean => {
-      if (!isSpeechSynthesisSupported) {
-        console.warn('Speech synthesis is not supported');
-        return false;
-      }
+  const generateSpeechLocal = (text: string) => {
+    if (!isSpeechSynthesisSupported) {
+      console.warn('Speech synthesis is not supported');
+      return;
+    }
 
-      const synth = window.speechSynthesis;
-      const voice = voices.find((v) => v.value === voiceName);
+    const synth = window.speechSynthesis;
+    const voice = voices.find((v) => v.value === voiceName);
 
-      if (!voice) {
-        console.warn('Selected voice not found');
-        return false;
-      }
+    if (!voice) {
+      console.warn('Selected voice not found');
+      return;
+    }
 
-      try {
-        synth.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.voice = synth.getVoices().find((v) => v.name === voice.value) || null;
-        utterance.onend = () => {
-          setIsSpeaking(false);
-        };
-        utterance.onerror = (event) => {
-          if (event.error === 'interrupted' || event.error === 'canceled') {
-            setIsSpeaking(false);
-            return;
-          }
-
-          console.error('Speech synthesis error:', event);
-          setIsSpeaking(false);
-        };
-        setIsSpeaking(true);
-        synth.speak(utterance);
-        return true;
-      } catch (error) {
-        console.error('Error generating speech:', error);
+    try {
+      synth.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.voice = synth.getVoices().find((v) => v.name === voice.value) || null;
+      utterance.onend = () => {
         setIsSpeaking(false);
-        return false;
-      }
-    },
-    [isSpeechSynthesisSupported, voices, voiceName, setIsSpeaking],
-  );
+      };
+      utterance.onerror = (event) => {
+        if (event.error === 'interrupted' || event.error === 'canceled') {
+          setIsSpeaking(false);
+          return;
+        }
 
-  const cancelSpeechLocal = useCallback(() => {
+        console.error('Speech synthesis error:', event);
+        setIsSpeaking(false);
+      };
+      setIsSpeaking(true);
+      synth.speak(utterance);
+    } catch (error) {
+      console.error('Error generating speech:', error);
+      setIsSpeaking(false);
+    }
+  };
+
+  const cancelSpeechLocal = () => {
     if (!isSpeechSynthesisSupported) {
       return;
     }
@@ -81,7 +74,7 @@ function useTextToSpeechBrowser({
     } finally {
       setIsSpeaking(false);
     }
-  }, [isSpeechSynthesisSupported, setIsSpeaking]);
+  };
 
   return { generateSpeechLocal, cancelSpeechLocal, voices, isSpeechSynthesisSupported };
 }

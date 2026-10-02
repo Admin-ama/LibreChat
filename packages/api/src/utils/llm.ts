@@ -1,5 +1,5 @@
 import { librechat } from 'librechat-data-provider';
-import type { DynamicSettingProps, ImageDetail } from 'librechat-data-provider';
+import type { DynamicSettingProps } from 'librechat-data-provider';
 
 type LibreChatKeys = keyof typeof librechat;
 
@@ -10,7 +10,6 @@ type LibreChatParams = {
   maxContextTokens?: number;
   fileTokenLimit?: number;
   modelLabel?: string | null;
-  imageDetail?: ImageDetail;
 };
 
 /**
@@ -36,7 +35,6 @@ export function extractLibreChatParams(
   const maxContextTokens = (delete modelOptions.maxContextTokens, options.maxContextTokens);
   const fileTokenLimit = (delete modelOptions.fileTokenLimit, options.fileTokenLimit);
   const modelLabel = (delete modelOptions.modelLabel, options.modelLabel);
-  const imageDetail = (delete modelOptions.imageDetail, options.imageDetail);
 
   return {
     modelOptions: modelOptions as Omit<
@@ -48,6 +46,5 @@ export function extractLibreChatParams(
     promptPrefix,
     resendFiles,
     modelLabel,
-    imageDetail,
   };
 }

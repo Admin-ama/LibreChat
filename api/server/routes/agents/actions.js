@@ -9,7 +9,6 @@ const {
   validateActionOAuthMetadata,
   ACTION_CREDENTIAL_REFRESH_MESSAGE,
   buildActionOAuthTokenDeleteQueries,
-  blockFilteredActionProjection,
 } = require('@librechat/api');
 const {
   Permissions,
@@ -21,11 +20,7 @@ const {
   validateActionDomain,
   validateAndParseOpenAPISpec,
 } = require('librechat-data-provider');
-const {
-  decryptMetadata,
-  encryptMetadata,
-  domainParser,
-} = require('~/server/services/ActionService');
+const { encryptMetadata, domainParser } = require('~/server/services/ActionService');
 const { findAccessibleResources } = require('~/server/services/PermissionService');
 const { attachOwnerContacts } = require('~/server/services/Agents/ownerContact');
 const db = require('~/models');
@@ -68,13 +63,9 @@ router.get('/', async (req, res) => {
 
     const editableAgentIds = agentsResponse.data.map((agent) => agent.id);
     const actions =
-      editableAgentIds.length > 0 ? await db.getActions({ agentId: editableAgentIds }) : [];
-
-    for (const action of actions) {
-      if (blockFilteredActionProjection(req.config?.filters, res, action)) {
-        return;
-      }
-    }
+      editableAgentIds.length > 0
+        ? await db.getActions({ agent_id: { $in: editableAgentIds } })
+        : [];
 
     res.json(actions);
   } catch (error) {
@@ -106,15 +97,6 @@ router.post(
       const { functions, action_id: _action_id, metadata: _metadata } = req.body;
       if (!functions.length) {
         return res.status(400).json({ message: 'No functions provided' });
-      }
-
-      if (
-        blockFilteredActionProjection(req.config?.filters, res, {
-          functions,
-          metadata: _metadata,
-        })
-      ) {
-        return;
       }
 
       const metadata = await encryptMetadata(removeNullishValues(_metadata, true));
@@ -169,7 +151,7 @@ router.post(
       // Permissions already validated by middleware - load agent directly
       initialPromises.push(db.getAgent({ id: agent_id }));
       if (requestedActionId) {
-        initialPromises.push(db.getActions({ actionId: requestedActionId }, true));
+        initialPromises.push(db.getActions({ action_id: requestedActionId }, true));
       }
 
       /** @type {[Agent, [Action|undefined]]} */
@@ -198,15 +180,6 @@ router.post(
         previousLegacyDomain: legacyActionDomainEncode(storedAction?.metadata?.domain),
         storedAction,
       });
-
-      if (
-        blockFilteredActionProjection(req.config?.filters, res, {
-          functions: plannedUpdate.tools.map((name) => ({ function: { name } })),
-          metadata: await decryptMetadata(plannedUpdate.metadata),
-        })
-      ) {
-        return;
-      }
 
       if (plannedUpdate.requiresCredentialRefresh) {
         return res.status(400).json({
@@ -252,7 +225,7 @@ router.post(
 
       /** @type {Action} */
       const updatedAction = await db.updateAction(
-        { actionId: requestedActionId ?? action_id, agentId: agent_id },
+        { action_id: requestedActionId ?? action_id, agent_id },
         actionUpdateData,
       );
 
@@ -321,7 +294,7 @@ router.delete(
         { tools: updatedTools, actions: updatedActions },
         { updatingUserId: req.user.id, forceVersion: true },
       );
-      const deleted = await db.deleteAction({ actionId: action_id, agentId: agent_id });
+      const deleted = await db.deleteAction({ action_id, agent_id });
       if (!deleted) {
         logger.warn('[Agent Action Delete] No matching action document found', {
           action_id,

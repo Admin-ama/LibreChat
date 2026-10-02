@@ -1,4 +1,3 @@
-import { resolveModelCatalogKey } from 'librechat-data-provider';
 import { useGetModelsQuery } from 'librechat-data-provider/react-query';
 import type { TConversation } from 'librechat-data-provider';
 import type { TSetOption } from '~/common';
@@ -30,7 +29,7 @@ export default function ModelSelect({
   }
 
   const { endpoint: _endpoint, endpointType } = conversation;
-  const models = modelsQuery.data?.[resolveModelCatalogKey(_endpoint, modelsQuery.data)] ?? [];
+  const models = modelsQuery.data?.[_endpoint] ?? [];
   const endpoint = endpointType ?? _endpoint;
 
   const OptionComponent = multiChatOptions[endpoint];

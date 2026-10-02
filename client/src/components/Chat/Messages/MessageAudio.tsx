@@ -7,11 +7,6 @@ import store from '~/store';
 
 function MessageAudio(props: TMessageAudio) {
   const engineTTS = useRecoilValue<string>(store.engineTTS);
-  const speechSettingsInitialized = useRecoilValue(store.speechSettingsInitialized);
-
-  if (!speechSettingsInitialized) {
-    return null;
-  }
 
   const TTSComponents = {
     [TTSEndpoints.browser]: BrowserTTS,

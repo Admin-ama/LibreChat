@@ -7,28 +7,9 @@ import type { ClientOptions } from '@librechat/agents';
 import type { EndpointDbMethods, OpenAIConfiguration, ServerRequest } from '~/types';
 import type { ActivityLabelLLM } from './runtime';
 import { getProviderConfig } from '~/endpoints/config/providers';
-import { resolveRequestTenantId } from '~/middleware/tenant';
 import { resolveConfigHeaders } from '~/utils/headers';
 import { omitTitleOptions } from '~/agents/client';
 import { createSafeUser } from '~/utils/env';
-
-/** Additive label fields may precede the rebuilt data-provider artifact in a
- * package-local typecheck, so keep the endpoint view structural here. */
-type ActivityEndpoint = TEndpoint & {
-  activityPhaseLabel?: boolean;
-  activityPhaseModel?: string;
-  activityPhaseEndpoint?: string;
-  activityPhasePrompt?: string;
-  activityPhaseMaxPerRun?: number;
-  reasoningLabel?: boolean;
-  reasoningLabelModel?: string;
-  reasoningLabelEndpoint?: string;
-  reasoningLabelPrompt?: string;
-  reasoningLabelMinChars?: number;
-  reasoningLabelUpdateChars?: number;
-  reasoningLabelUpdateIntervalMs?: number;
-  reasoningLabelMaxPerRun?: number;
-};
 
 /** Cache-token details in the LangChain-standard normalized shape. */
 interface CacheTokenDetails {
@@ -153,28 +134,6 @@ export interface ResolvedActivityConfig {
   charLimit?: number;
 }
 
-/** Effective parent activity-phase settings for one endpoint. */
-export interface ResolvedActivityPhaseConfig {
-  enabled: boolean;
-  model?: string;
-  endpoint?: string;
-  prompt?: string;
-  maxPerRun?: number;
-  charLimit?: number;
-}
-
-/** Effective live reasoning-label settings for one endpoint. */
-export interface ResolvedReasoningLabelConfig {
-  enabled: boolean;
-  model?: string;
-  endpoint?: string;
-  prompt?: string;
-  minChars?: number;
-  updateChars?: number;
-  updateIntervalMs?: number;
-  maxPerRun?: number;
-}
-
 /**
  * Reads the per-endpoint `activity*` settings, mirroring how titles resolve
  * theirs: an `endpoints.all` block wins over the named endpoint, which wins
@@ -190,17 +149,17 @@ export interface ResolvedReasoningLabelConfig {
  * `titleModel` fallback. Global still wins per field, so a real
  * `all.activityLabel` keeps overriding the endpoint.
  */
-function pickEndpointField<K extends keyof ActivityEndpoint>(
+function pickEndpointField<K extends keyof TEndpoint>(
   appConfig: AppConfig | undefined,
   endpoint: string,
-  customEndpointConfig: Partial<ActivityEndpoint> | undefined,
+  customEndpointConfig: Partial<TEndpoint> | undefined,
   key: K,
   publicEndpoint?: string,
-): ActivityEndpoint[K] | undefined {
+): TEndpoint[K] | undefined {
   const endpoints = appConfig?.endpoints as
-    | (Record<string, ActivityEndpoint | undefined> & { all?: ActivityEndpoint })
+    | (Record<string, TEndpoint | undefined> & { all?: TEndpoint })
     | undefined;
-  const all = endpoints?.all as Partial<ActivityEndpoint> | undefined;
+  const all = endpoints?.all as Partial<TEndpoint> | undefined;
   /** The PUBLIC endpoint the request came in on, when it differs from the
    *  backing provider. `initializeAgent` rewrites `agent.endpoint` to the
    *  provider (an agents-endpoint run backed by OpenAI reads `openAI`), so
@@ -210,11 +169,9 @@ function pickEndpointField<K extends keyof ActivityEndpoint>(
    *  mirroring how request-path options resolve. */
   const publicBlock =
     publicEndpoint != null && publicEndpoint !== endpoint
-      ? (endpoints?.[publicEndpoint] as Partial<ActivityEndpoint> | undefined)
+      ? (endpoints?.[publicEndpoint] as Partial<TEndpoint> | undefined)
       : undefined;
-  const named = (endpoints?.[endpoint] ?? customEndpointConfig) as
-    | Partial<ActivityEndpoint>
-    | undefined;
+  const named = (endpoints?.[endpoint] ?? customEndpointConfig) as Partial<TEndpoint> | undefined;
   return all?.[key] ?? publicBlock?.[key] ?? named?.[key];
 }
 
@@ -224,7 +181,7 @@ export function resolveActivityConfig(
   customEndpointConfig?: Partial<TEndpoint>,
   publicEndpoint?: string,
 ): ResolvedActivityConfig {
-  const pick = <K extends keyof ActivityEndpoint>(key: K): ActivityEndpoint[K] | undefined =>
+  const pick = <K extends keyof TEndpoint>(key: K): TEndpoint[K] | undefined =>
     pickEndpointField(appConfig, endpoint, customEndpointConfig, key, publicEndpoint);
   return {
     enabled: pick('activityLabel') === true,
@@ -234,44 +191,6 @@ export function resolveActivityConfig(
     maxPerRun: pick('activityMaxPerRun'),
     charLimit: pick('activityCharLimit'),
     /** `titleModel` is the documented fallback below, not a field here. */
-  };
-}
-
-export function resolveActivityPhaseConfig(
-  appConfig: AppConfig | undefined,
-  endpoint: string,
-  customEndpointConfig?: Partial<TEndpoint>,
-  publicEndpoint?: string,
-): ResolvedActivityPhaseConfig {
-  const pick = <K extends keyof ActivityEndpoint>(key: K): ActivityEndpoint[K] | undefined =>
-    pickEndpointField(appConfig, endpoint, customEndpointConfig, key, publicEndpoint);
-  return {
-    enabled: pick('activityPhaseLabel') === true,
-    model: pick('activityPhaseModel') ?? pick('activityModel'),
-    endpoint: pick('activityPhaseEndpoint') ?? pick('activityEndpoint'),
-    prompt: pick('activityPhasePrompt'),
-    maxPerRun: pick('activityPhaseMaxPerRun'),
-    charLimit: pick('activityCharLimit'),
-  };
-}
-
-export function resolveReasoningLabelConfig(
-  appConfig: AppConfig | undefined,
-  endpoint: string,
-  customEndpointConfig?: Partial<TEndpoint>,
-  publicEndpoint?: string,
-): ResolvedReasoningLabelConfig {
-  const pick = <K extends keyof ActivityEndpoint>(key: K): ActivityEndpoint[K] | undefined =>
-    pickEndpointField(appConfig, endpoint, customEndpointConfig, key, publicEndpoint);
-  return {
-    enabled: pick('reasoningLabel') === true,
-    model: pick('reasoningLabelModel') ?? pick('activityModel'),
-    endpoint: pick('reasoningLabelEndpoint') ?? pick('activityEndpoint'),
-    prompt: pick('reasoningLabelPrompt'),
-    minChars: pick('reasoningLabelMinChars'),
-    updateChars: pick('reasoningLabelUpdateChars'),
-    updateIntervalMs: pick('reasoningLabelUpdateIntervalMs'),
-    maxPerRun: pick('reasoningLabelMaxPerRun'),
   };
 }
 
@@ -289,38 +208,16 @@ export async function resolveActivityLabelModel({
   publicEndpoint,
   ids,
   db,
-  phase = false,
-  reasoning = false,
-}: ResolveActivityLabelModelParams & {
-  phase?: boolean;
-  reasoning?: boolean;
-}): Promise<ActivityLabelLLM> {
+}: ResolveActivityLabelModelParams): Promise<ActivityLabelLLM> {
   const appConfig = req.config as AppConfig | undefined;
   const agentEndpoint = agent.endpoint ?? '';
   let providerConfig = getProviderConfig({ provider: agentEndpoint, appConfig });
-  let activity: ResolvedActivityConfig | ResolvedActivityPhaseConfig | ResolvedReasoningLabelConfig;
-  if (reasoning) {
-    activity = resolveReasoningLabelConfig(
-      appConfig,
-      agentEndpoint,
-      providerConfig.customEndpointConfig,
-      publicEndpoint,
-    );
-  } else if (phase) {
-    activity = resolveActivityPhaseConfig(
-      appConfig,
-      agentEndpoint,
-      providerConfig.customEndpointConfig,
-      publicEndpoint,
-    );
-  } else {
-    activity = resolveActivityConfig(
-      appConfig,
-      agentEndpoint,
-      providerConfig.customEndpointConfig,
-      publicEndpoint,
-    );
-  }
+  const activity = resolveActivityConfig(
+    appConfig,
+    agentEndpoint,
+    providerConfig.customEndpointConfig,
+    publicEndpoint,
+  );
 
   /**
    * Captured from the ORIGINATING endpoint, before any `activityEndpoint`
@@ -344,14 +241,8 @@ export async function resolveActivityLabelModel({
       providerConfig = getProviderConfig({ provider: activity.endpoint, appConfig });
       endpoint = activity.endpoint;
     } catch (error) {
-      let endpointField = 'activityEndpoint';
-      if (reasoning) {
-        endpointField = 'reasoningLabelEndpoint';
-      } else if (phase) {
-        endpointField = 'activityPhaseEndpoint';
-      }
       logger.warn(
-        `[activityLabels] Unknown ${endpointField} "${activity.endpoint}", falling back to "${agentEndpoint}"`,
+        `[activityLabels] Unknown activityEndpoint "${activity.endpoint}", falling back to "${agentEndpoint}"`,
         error,
       );
       providerConfig = getProviderConfig({ provider: agentEndpoint, appConfig });
@@ -483,7 +374,6 @@ export async function resolveActivityLabelModel({
   resolveConfigHeaders({
     llmConfig: clientOptions,
     user: createSafeUser(req.user as IUser | undefined),
-    tenantId: resolveRequestTenantId(req),
     body: ids,
   });
   return {
@@ -493,20 +383,6 @@ export async function resolveActivityLabelModel({
     endpointTokenConfig: options.endpointTokenConfig,
     sameEndpoint: endpoint === agentEndpoint,
   };
-}
-
-/** Phase-model resolution shares credentials and sanitization with child labels. */
-export function resolveActivityPhaseLabelModel(
-  params: ResolveActivityLabelModelParams,
-): Promise<ActivityLabelLLM> {
-  return resolveActivityLabelModel({ ...params, phase: true });
-}
-
-/** Reasoning-label model resolution shares credentials and sanitization with activity labels. */
-export function resolveReasoningLabelModel(
-  params: ResolveActivityLabelModelParams,
-): Promise<ActivityLabelLLM> {
-  return resolveActivityLabelModel({ ...params, reasoning: true });
 }
 
 /**

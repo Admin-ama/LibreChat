@@ -11,14 +11,13 @@ import {
 } from 'librechat-data-provider';
 import type { BedrockRuntimeClientConfig } from '@aws-sdk/client-bedrock-runtime';
 import type {
+  BaseInitializeParams,
   InitializeResultBase,
   BedrockCredentials,
   GuardrailConfiguration,
   InferenceProfileConfig,
-  ProviderInitializeParams,
 } from '~/types';
 import { getHttpsProxyAgent } from '~/utils/proxy';
-import { resolveEndpointRuntime } from '~/types';
 import { checkUserKeyExpiry } from '~/utils';
 
 const BEDROCK_CREDENTIALS_ERROR = 'Bedrock credentials not provided. Please provide them again.';
@@ -105,12 +104,14 @@ function getUserCredentialValue(
  * @returns Promise resolving to Bedrock configuration options
  * @throws Error if credentials are not provided when required
  */
-export async function initializeBedrock(
-  params: ProviderInitializeParams,
-): Promise<InitializeResultBase> {
-  const { endpoint, model_parameters, db } = params;
-  const { appConfig, user, requestBody } = resolveEndpointRuntime(params);
+export async function initializeBedrock({
+  req,
+  endpoint,
+  model_parameters,
+  db,
+}: BaseInitializeParams): Promise<InitializeResultBase> {
   void endpoint;
+  const appConfig = req.config;
   const bedrockConfig = appConfig?.endpoints?.[EModelEndpoint.bedrock] as
     | ({
         guardrailConfig?: GuardrailConfiguration;
@@ -128,7 +129,7 @@ export async function initializeBedrock(
     BEDROCK_AWS_DEFAULT_REGION,
   } = process.env;
 
-  const { key: expiresAt } = requestBody;
+  const { key: expiresAt } = req.body;
   const userProvidesAccessKeyId = BEDROCK_AWS_ACCESS_KEY_ID === AuthType.USER_PROVIDED;
   const userProvidesSecretAccessKey = BEDROCK_AWS_SECRET_ACCESS_KEY === AuthType.USER_PROVIDED;
   const userProvidesSessionToken = BEDROCK_AWS_SESSION_TOKEN === AuthType.USER_PROVIDED;
@@ -153,7 +154,7 @@ export async function initializeBedrock(
 
   if (isUserProvided) {
     const userKey = await db.getUserKey({
-      userId: user?.id ?? '',
+      userId: req.user?.id ?? '',
       name: EModelEndpoint.bedrock,
     });
 
@@ -322,14 +323,6 @@ export async function initializeBedrock(
     if (BEDROCK_REVERSE_PROXY) {
       llmConfig.endpointHost = BEDROCK_REVERSE_PROXY;
     }
-  }
-
-  const streamRate =
-    appConfig?.endpoints?.all?.streamRate != null
-      ? appConfig.endpoints.all.streamRate
-      : (bedrockConfig?.streamRate as number | undefined);
-  if (streamRate != null) {
-    llmConfig._lc_stream_delay = streamRate;
   }
 
   return {

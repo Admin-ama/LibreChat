@@ -1,5 +1,5 @@
 import { useFormContext, Controller } from 'react-hook-form';
-import { Input, Label, HoverCard, HoverCardPortal, HoverCardContent } from '@librechat/client';
+import { Input, HoverCard, HoverCardPortal, HoverCardContent } from '@librechat/client';
 import type { AgentForm } from '~/common';
 import { useLocalize } from '~/hooks';
 import { InfoTrigger } from './ui';
@@ -13,9 +13,9 @@ export default function MaxAgentSteps() {
     <HoverCard openDelay={50}>
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center gap-1.5">
-          <Label htmlFor="recursion_limit" className="w-auto text-[13px] font-medium">
+          <label htmlFor="recursion_limit" className="text-[13px] font-medium text-text-primary">
             {localize('com_ui_agent_recursion_limit')}
-          </Label>
+          </label>
           <InfoTrigger />
         </div>
         <Controller

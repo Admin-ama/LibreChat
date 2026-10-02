@@ -60,11 +60,10 @@ describe('SkillPills', () => {
     const manualSvg = manual.querySelector('svg');
     expect(alwaysApplySvg).toBeTruthy();
     expect(manualSvg).toBeTruthy();
-    // Pin vs. ScrollText have distinct lucide class names, but both use the
-    // same semantic informational color.
+    // Pin vs. ScrollText have distinct lucide class names; both carry the
+    // cyan-500 accent the component applies, but only one carries the
+    // lucide-pin class.
     expect(alwaysApplySvg?.getAttribute('class')).toContain('lucide-pin');
     expect(manualSvg?.getAttribute('class')).not.toContain('lucide-pin');
-    expect(alwaysApplySvg).toHaveClass('text-status-info');
-    expect(manualSvg).toHaveClass('text-status-info');
   });
 });

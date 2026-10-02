@@ -1,6 +1,5 @@
 // errorHandler.js
 const { logger } = require('@librechat/data-schemas');
-const { getTransactionsConfig } = require('@librechat/api');
 const { CacheKeys, ViolationTypes, ContentTypes } = require('librechat-data-provider');
 const { recordUsage, checkMessageGaps } = require('~/server/services/Threads');
 const { sendResponse } = require('~/server/middleware/error');
@@ -125,7 +124,6 @@ const createErrorHandler = ({ req, res, getContext, originPath = '/assistants/ch
         model: run.model,
         user: req.user.id,
         conversationId,
-        transactions: getTransactionsConfig(req.config),
       });
     } catch (error) {
       logger.error(`[${originPath}] Error fetching or processing run`, error);

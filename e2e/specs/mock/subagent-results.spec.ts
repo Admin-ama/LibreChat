@@ -2,13 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import type { AgentDetail } from './agents.helpers';
 import { cleanupAgent, openAgentBuilder, uniqueAgentName } from './agents.helpers';
-import {
-  MOCK_ENDPOINTS,
-  getAccessToken,
-  messagesView,
-  requestJson,
-  sendMessageAndWaitForCompletion,
-} from './helpers';
+import { MOCK_ENDPOINTS, getAccessToken, messagesView, requestJson, sendMessage } from './helpers';
 
 async function createAgent(
   page: Page,
@@ -63,10 +57,7 @@ test.describe('isolated subagent results', () => {
       parentId = parent.id;
 
       await selectAgent(page, parentName);
-      const response = await sendMessageAndWaitForCompletion(
-        page,
-        `E2E_SUBAGENT_RESULT:${child.id}:${label}`,
-      );
+      const response = await sendMessage(page, `E2E_SUBAGENT_RESULT:${child.id}:${label}`);
       expect(response.ok()).toBeTruthy();
 
       const expected = `E2E subagent streamed result ${label}`;

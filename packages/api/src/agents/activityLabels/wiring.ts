@@ -17,7 +17,6 @@ export interface LooseContentPart {
   groupId?: unknown;
   tool_call?: { id?: unknown };
   pending?: boolean;
-  phase?: unknown;
   [key: string]: unknown;
 }
 
@@ -49,7 +48,6 @@ export function captureActivityBlockContext(
 ): ActivityLabelBlockContext {
   const thinkingExcerpts: string[] = [];
   let lastAssistantText: string | undefined;
-  let lastAssistantPhase: ActivityLabelBlockContext['lastAssistantPhase'];
   let collectThinking = true;
   for (let i = parts.length - 1; i >= 0; i--) {
     const part = parts[i];
@@ -70,9 +68,6 @@ export function captureActivityBlockContext(
       const text = textValue(part.text).trim();
       if (text.length > 0) {
         lastAssistantText = text.slice(-INTENT_CHARS);
-        if (part.phase === 'commentary' || part.phase === 'final_answer') {
-          lastAssistantPhase = part.phase;
-        }
         break;
       }
       continue;
@@ -89,7 +84,7 @@ export function captureActivityBlockContext(
       }
     }
   }
-  return { thinkingExcerpts, lastAssistantText, lastAssistantPhase };
+  return { thinkingExcerpts, lastAssistantText };
 }
 
 /**
@@ -133,9 +128,9 @@ interface ActivityLabelGapEvent {
  * label publish is fire-and-forget and the sync payload carries only the
  * snapshot, so a label claimed or resolved in that window would otherwise
  * never reach the reconnecting client. Compares by index: a fresh label part
- * whose text, pending state, or phase bounds differ from the snapshot's (or
- * that has no snapshot counterpart) is re-emitted. Idempotent - the client
- * applier ignores duplicates and refuses stale pending placeholders.
+ * whose text or pending state differs from the snapshot's (or that has no
+ * snapshot counterpart) is re-emitted. Idempotent - the client applier
+ * ignores duplicates and refuses stale pending placeholders.
  */
 export function synthesizeActivityLabelGapEvents(
   snapshotContent: ReadonlyArray<LooseContentPart | null | undefined>,
@@ -152,10 +147,6 @@ export function synthesizeActivityLabelGapEvents(
     const isSameLabel =
       snapshot?.type === ContentTypes.ACTIVITY_LABEL &&
       snapshot[ContentTypes.ACTIVITY_LABEL] === part[ContentTypes.ACTIVITY_LABEL] &&
-      snapshot.activity_label_type === part.activity_label_type &&
-      snapshot.activity_start_index === part.activity_start_index &&
-      snapshot.activity_end_index === part.activity_end_index &&
-      snapshot.activity_count === part.activity_count &&
       snapshot.pending === part.pending;
     if (isSameLabel) {
       continue;
@@ -227,7 +218,7 @@ export function createActivityLabelWiring(deps: ActivityLabelHostDeps): {
   const initialLabels: Array<{ index: number; text: string }> = [];
   for (let i = 0; i < resumedParts.length; i++) {
     const part = resumedParts[i];
-    if (part?.type !== ContentTypes.ACTIVITY_LABEL || part.activity_label_type === 'phase') {
+    if (part?.type !== ContentTypes.ACTIVITY_LABEL) {
       continue;
     }
     initialGeneratedCount += 1;

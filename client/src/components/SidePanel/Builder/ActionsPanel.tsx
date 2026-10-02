@@ -149,7 +149,7 @@ export default function ActionsPanel({
                         });
                       },
                       selectClasses:
-                        'bg-surface-destructive hover:bg-surface-destructive-hover transition-color duration-200 text-text-on-status',
+                        'bg-red-700 dark:bg-red-600 hover:bg-red-800 dark:hover:bg-red-800 transition-color duration-200 text-white',
                       selectText: localize('com_ui_delete'),
                     }}
                   />

@@ -7,8 +7,6 @@ import type {
   STTService,
   FileObject,
 } from '~/types';
-import { getBlockedUninspectableFileField, UninspectableFileError } from '~/protection/files';
-import { getSafeErrorMetadata } from '~/utils';
 
 /**
  * Processes audio files using Speech-to-Text (STT) service.
@@ -23,8 +21,6 @@ export async function processAudioFile({
   file: FileObject;
   sttService: STTService;
 }): Promise<AudioProcessingResult> {
-  const uninspectableField = getBlockedUninspectableFileField(req.config?.filters, ['transcript']);
-  let text: string;
   try {
     const audioBuffer = await fs.promises.readFile(file.path);
     const audioFile: AudioFileInfo = {
@@ -33,26 +29,15 @@ export async function processAudioFile({
       size: file.size,
     };
 
-    const [provider, sttSchema, allowedAddresses] = await sttService.getProviderSchema(req);
-    text = await sttService.sttRequest(
-      provider,
-      sttSchema,
-      { audioBuffer, audioFile },
-      allowedAddresses,
-    );
+    const [provider, sttSchema] = await sttService.getProviderSchema(req);
+    const text = await sttService.sttRequest(provider, sttSchema, { audioBuffer, audioFile });
+
+    return {
+      text,
+      bytes: Buffer.byteLength(text, 'utf8'),
+    };
   } catch (error) {
-    logger.error('Error processing audio file with STT:', getSafeErrorMetadata(error));
-    if (uninspectableField != null) {
-      throw new UninspectableFileError(uninspectableField);
-    }
+    logger.error('Error processing audio file with STT:', error);
     throw new Error(`Failed to process audio file: ${(error as Error).message}`);
   }
-
-  if (text.trim().length === 0 && uninspectableField != null) {
-    throw new UninspectableFileError(uninspectableField);
-  }
-  return {
-    text,
-    bytes: Buffer.byteLength(text, 'utf8'),
-  };
 }

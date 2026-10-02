@@ -1,8 +1,7 @@
 import { Agent } from 'undici';
-import { isIP } from 'node:net';
-import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport';
 import type { Dispatcher } from 'undici';
-import { createSSRFSafeUndiciConnect, isOAuthUrlAllowed, isSSRFTarget } from '~/auth';
+import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport';
+import { createSSRFSafeUndiciConnect, isOAuthUrlAllowed } from '~/auth';
 import { getOAuthUrlPort } from './url';
 
 type FetchInitWithDispatcher = RequestInit & {
@@ -51,10 +50,6 @@ function getOAuthDispatcher(
   const port = getOAuthUrlPort(parsedUrl);
   const effectiveAddresses =
     Array.isArray(allowedDomains) && allowedDomains.length > 0 ? null : allowedAddresses;
-  const literalHost = parsedUrl.hostname.replace(/^\[|\]$/g, '');
-  if (isIP(literalHost) && isSSRFTarget(literalHost, effectiveAddresses, port)) {
-    throw new Error('OAuth endpoint targets a blocked address');
-  }
   const cacheKey = getDispatcherCacheKey(port, effectiveAddresses);
   const cached = oauthDispatchers.get(cacheKey);
   if (cached) {
@@ -84,9 +79,7 @@ export function createHardenedOAuthFetch({
   return async (url: string | URL, init?: RequestInit): Promise<Response> => {
     const dispatcher = getOAuthDispatcher(url, allowedDomains, allowedAddresses);
     const fetchInit: FetchInitWithDispatcher =
-      dispatcher != null
-        ? { ...init, dispatcher, redirect: 'error' }
-        : { ...init, redirect: 'error' };
+      dispatcher != null ? { ...init, dispatcher } : { ...init };
     return fetch(url, fetchInit);
   };
 }

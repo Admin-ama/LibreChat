@@ -20,24 +20,22 @@ const PeoplePickerSearchItem = forwardRef<HTMLDivElement, PeoplePickerSearchItem
     const displayName = name || localize('com_ui_unknown');
     const subtitle = email || `${type} (${principal.source || 'local'})`;
 
-    /** Semantic series roles rather than palette hues: a raw utility does not
-     *  move when the theme does, and these labels render at 12px, so they answer
-     *  to the text floor on whichever canvas the viewer picked. */
+    /** Get badge styling based on type */
     const getBadgeConfig = () => {
       switch (type) {
         case PrincipalType.USER:
           return {
-            className: 'bg-series-1/10 text-series-1',
+            className: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
             label: localize('com_ui_user'),
           };
         case PrincipalType.GROUP:
           return {
-            className: 'bg-series-7/10 text-series-7',
+            className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
             label: localize('com_ui_group'),
           };
         case PrincipalType.ROLE:
           return {
-            className: 'bg-series-6/10 text-series-6',
+            className: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
             label: localize('com_ui_role'),
           };
         default:

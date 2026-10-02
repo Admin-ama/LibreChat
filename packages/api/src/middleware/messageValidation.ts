@@ -27,7 +27,6 @@ export type MessageValidationRequest = {
 
 type ConversationRecord = {
   user?: string;
-  subagentThread?: unknown;
 } | null;
 
 type PendingActionRecord = unknown;
@@ -72,10 +71,6 @@ export type MessageValidationDeps = {
 };
 
 export type MessageRequestMiddleware = {
-  canReadActiveJobConversation: (
-    req: MessageValidationRequest,
-    conversationId?: string,
-  ) => Promise<boolean>;
   createMessageRequestValidation: (req: MessageValidationRequest) => MessageRequestValidation;
   prepareMessageRequestValidation: (
     req: MessageValidationRequest,
@@ -95,10 +90,6 @@ function hasTenantMismatch(job: GenerationJobRecord, user: MessageValidationUser
   return job?.metadata?.tenantId != null && job.metadata.tenantId !== user.tenantId;
 }
 
-function isPublicReadMethod(method?: string): boolean {
-  return method === 'GET' || method === 'HEAD';
-}
-
 export function createMessageRequestMiddleware(
   deps: MessageValidationDeps,
 ): MessageRequestMiddleware {
@@ -106,7 +97,7 @@ export function createMessageRequestMiddleware(
     req: MessageValidationRequest,
     conversationId?: string,
   ): Promise<boolean> {
-    if (!isPublicReadMethod(req.method) || req.params?.messageId) {
+    if (req.method !== 'GET' || req.params?.messageId) {
       return false;
     }
 
@@ -160,13 +151,6 @@ export function createMessageRequestMiddleware(
         status: 403,
         body: { error: 'User not authorized for this conversation' },
       };
-    }
-
-    // Child threads are internal execution records, not standalone public
-    // conversations. Keep the same response as a missing conversation so the
-    // read boundary does not disclose whether a supplied child id exists.
-    if (isPublicReadMethod(req.method) && conversation.subagentThread != null) {
-      return { ok: false, status: 404, body: { error: 'Conversation not found' } };
     }
 
     return { ok: true };
@@ -241,7 +225,6 @@ export function createMessageRequestMiddleware(
   }
 
   return {
-    canReadActiveJobConversation,
     createMessageRequestValidation: createMessageRequestValidation,
     prepareMessageRequestValidation: prepareMessageRequestValidation,
     sendValidationResponse: sendValidationResponse,

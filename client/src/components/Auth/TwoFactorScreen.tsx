@@ -1,17 +1,9 @@
 import React, { useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useToastContext } from '@librechat/client';
-import { ErrorTypes } from 'librechat-data-provider';
 import { useForm, Controller } from 'react-hook-form';
 import { REGEXP_ONLY_DIGITS, REGEXP_ONLY_DIGITS_AND_CHARS } from 'input-otp';
-import {
-  Label,
-  Button,
-  InputOTP,
-  InputOTPSlot,
-  InputOTPGroup,
-  InputOTPSeparator,
-} from '@librechat/client';
+import { InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot, Label } from '@librechat/client';
 import { useVerifyTwoFactorTempMutation } from '~/data-provider';
 import { useLocalize } from '~/hooks';
 
@@ -51,13 +43,11 @@ const TwoFactorScreen: React.FC = React.memo(() => {
     },
     onError: (error: unknown) => {
       setIsLoading(false);
-      const data = (error as { response?: { data?: { message?: unknown; code?: unknown } } })
-        .response?.data;
-      if (data?.code === ErrorTypes.AUTH_CROSS_ORIGIN) {
-        showToast({ message: localize('com_auth_error_login_cross_origin'), status: 'error' });
-        return;
-      }
-      const errorMsg = typeof data?.message === 'string' ? data.message : 'Error verifying 2FA';
+      const err = error as { response?: { data?: { message?: unknown } } };
+      const errorMsg =
+        typeof err.response?.data?.message === 'string'
+          ? err.response.data.message
+          : 'Error verifying 2FA';
       showToast({ message: errorMsg, status: 'error' });
     },
   });
@@ -100,7 +90,6 @@ const TwoFactorScreen: React.FC = React.memo(() => {
                   value={value != null ? value : ''}
                   onChange={onChange}
                   pattern={REGEXP_ONLY_DIGITS}
-                  aria-label={localize('com_ui_2fa_verification_required')}
                 >
                   <InputOTPGroup>
                     <InputOTPSlot index={0} />
@@ -116,9 +105,7 @@ const TwoFactorScreen: React.FC = React.memo(() => {
                 </InputOTP>
               )}
             />
-            {errors.token && (
-              <span className="text-sm text-text-destructive">{errors.token.message}</span>
-            )}
+            {errors.token && <span className="text-sm text-red-500">{errors.token.message}</span>}
           </div>
         )}
         {useBackup && (
@@ -132,7 +119,6 @@ const TwoFactorScreen: React.FC = React.memo(() => {
                   value={value != null ? value : ''}
                   onChange={onChange}
                   pattern={REGEXP_ONLY_DIGITS_AND_CHARS}
-                  aria-label={localize('com_ui_backup_code_verification_required')}
                 >
                   <InputOTPGroup>
                     <InputOTPSlot index={0} />
@@ -148,40 +134,38 @@ const TwoFactorScreen: React.FC = React.memo(() => {
               )}
             />
             {errors.backupCode && (
-              <span className="text-sm text-text-destructive">{errors.backupCode.message}</span>
+              <span className="text-sm text-red-500">{errors.backupCode.message}</span>
             )}
           </div>
         )}
         <div className="flex items-center justify-between">
-          <Button
+          <button
             type="submit"
-            variant="submit"
+            aria-label={localize('com_auth_continue')}
             data-testid="login-button"
             disabled={isLoading}
-            className="w-full rounded-2xl px-4 py-3 text-sm font-medium disabled:opacity-80"
+            className="w-full rounded-2xl bg-green-600 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-80 dark:bg-green-600 dark:hover:bg-green-700"
           >
             {isLoading ? localize('com_auth_email_verifying_ellipsis') : localize('com_ui_verify')}
-          </Button>
+          </button>
         </div>
         <div className="mt-4 flex justify-center">
           {!useBackup ? (
-            <Button
+            <button
               type="button"
-              variant="link"
               onClick={toggleBackupOn}
-              className="inline-flex p-1 text-sm font-medium text-accent-primary transition-colors hover:text-accent-primary-hover"
+              className="inline-flex p-1 text-sm font-medium text-green-600 transition-colors hover:text-green-700 dark:text-green-400 dark:hover:text-green-300"
             >
               {localize('com_ui_use_backup_code')}
-            </Button>
+            </button>
           ) : (
-            <Button
+            <button
               type="button"
-              variant="link"
               onClick={toggleBackupOff}
-              className="inline-flex p-1 text-sm font-medium text-accent-primary transition-colors hover:text-accent-primary-hover"
+              className="inline-flex p-1 text-sm font-medium text-green-600 transition-colors hover:text-green-700 dark:text-green-400 dark:hover:text-green-300"
             >
               {localize('com_ui_use_2fa_code')}
-            </Button>
+            </button>
           )}
         </div>
       </form>

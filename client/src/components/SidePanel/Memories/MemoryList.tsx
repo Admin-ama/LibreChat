@@ -1,6 +1,5 @@
 import type { TUserMemory } from 'librechat-data-provider';
 import MemoryEmptyState from './MemoryEmptyState';
-import { getMemoryListKey } from './address';
 import MemoryCard from './MemoryCard';
 import { useLocalize } from '~/hooks';
 
@@ -24,7 +23,7 @@ export default function MemoryList({
   return (
     <div className="space-y-2" role="list" aria-label={localize('com_ui_memories')}>
       {memories.map((memory) => (
-        <div key={getMemoryListKey(memory)} role="listitem">
+        <div key={`${memory.agentId ?? ''}:${memory.key}`} role="listitem">
           <MemoryCard memory={memory} hasUpdateAccess={hasUpdateAccess} />
         </div>
       ))}

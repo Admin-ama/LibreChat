@@ -13,10 +13,6 @@ export type ToastState = {
   message: string;
   severity: NotificationSeverity;
   showIcon: boolean;
-  /** Milliseconds until the toast closes itself, or `Infinity` to require a dismissal. */
-  duration: number;
-  /** Increments per shown toast, so each one gets its own close deadline. */
-  id: number;
 };
 
 export const toastState: PrimitiveAtom<ToastState> & {
@@ -26,6 +22,4 @@ export const toastState: PrimitiveAtom<ToastState> & {
   message: '',
   severity: NotificationSeverity.SUCCESS,
   showIcon: true,
-  duration: 3000,
-  id: 0,
 });

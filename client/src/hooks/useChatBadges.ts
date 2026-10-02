@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
-import { Box } from 'lucide-react';
-import { useRecoilValue } from 'recoil';
 import { useRecoilCallback } from 'recoil';
+import { useRecoilValue } from 'recoil';
+import { MessageCircleDashed, Box } from 'lucide-react';
 import type { BadgeItem } from '~/common';
 import { useLocalize, TranslationKeys } from '~/hooks';
 import store from '~/store';

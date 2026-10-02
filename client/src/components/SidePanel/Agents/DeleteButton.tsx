@@ -1,7 +1,6 @@
 import { memo } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { useRecoilValue, useSetRecoilState } from 'recoil';
-import { resolveStatefulCodeEnvironment } from 'librechat-data-provider';
 import {
   Label,
   Button,
@@ -13,10 +12,10 @@ import {
 } from '@librechat/client';
 import type { Agent, AgentCreateParams } from 'librechat-data-provider';
 import type { UseMutationResult } from '@tanstack/react-query';
-import { useAuthContext, useGetAgentsConfig, useLocalize } from '~/hooks';
 import { logger, getDefaultAgentFormValues } from '~/utils';
 import { useDeleteAgentMutation } from '~/data-provider';
 import { isEphemeralAgent } from '~/common';
+import { useLocalize } from '~/hooks';
 import store from '~/store';
 
 function DeleteButton({
@@ -29,8 +28,6 @@ function DeleteButton({
   createMutation: UseMutationResult<Agent, Error, AgentCreateParams>;
 }) {
   const localize = useLocalize();
-  const { user } = useAuthContext();
-  const { agentsConfig } = useGetAgentsConfig();
   const { reset } = useFormContext();
   const { showToast } = useToastContext();
   const setConversation = useSetRecoilState(store.conversationByIndex(0));
@@ -56,14 +53,7 @@ function DeleteButton({
       const firstAgent = updatedList[0] as Agent | undefined;
       if (!firstAgent) {
         setCurrentAgentId(undefined);
-        reset(
-          getDefaultAgentFormValues(
-            resolveStatefulCodeEnvironment(
-              user?.personalization?.statefulCodeEnvironment ?? 'user',
-              agentsConfig?.statefulCodeSessions?.allowedEnvironments,
-            ) ?? 'user',
-          ),
-        );
+        reset(getDefaultAgentFormValues());
         setConversation((prev) => (prev ? { ...prev, agent_id: '' } : prev));
         return;
       }
@@ -104,7 +94,7 @@ function DeleteButton({
           title={localize('com_ui_delete_agent')}
           type="button"
         >
-          <div className="flex w-full items-center justify-center gap-2 text-text-destructive">
+          <div className="flex w-full items-center justify-center gap-2 text-red-500">
             <TrashIcon />
           </div>
         </Button>
@@ -125,8 +115,7 @@ function DeleteButton({
         }
         selection={{
           selectHandler: () => deleteAgent.mutate({ agent_id }),
-          selectClasses:
-            'bg-surface-destructive hover:bg-surface-destructive-hover text-text-on-status',
+          selectClasses: 'bg-red-600 hover:bg-red-700 dark:hover:bg-red-800 text-white',
           selectText: localize('com_ui_delete'),
         }}
       />

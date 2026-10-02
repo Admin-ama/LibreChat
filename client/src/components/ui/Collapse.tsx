@@ -5,7 +5,6 @@ interface CollapseProps {
   open: boolean;
   children: ReactNode;
   className?: string;
-  overflowVisibleWhenOpen?: boolean;
 }
 
 /**
@@ -15,19 +14,8 @@ interface CollapseProps {
  * cross-fade smoothly without a measuring wrapper fighting nested reveals.
  * Content fades to soften the swap; while closed it is `inert` (removed from tab
  * order and the a11y tree) so collapsed form fields can't be focused or read.
- *
- * `overflowVisibleWhenOpen` lifts the clip while open so non-portaled popovers
- * anchored inside (e.g. dropdown menus, which must stay in-tree within modal
- * dialogs to remain inside the focus trap) aren't sheared at the box edge; the
- * closed state and the closing tween still clip, and the opacity fade masks the
- * un-clipped opening tween.
  */
-export default function Collapse({
-  open,
-  children,
-  className,
-  overflowVisibleWhenOpen = false,
-}: CollapseProps) {
+export default function Collapse({ open, children, className }: CollapseProps) {
   return (
     <div
       aria-hidden={!open || undefined}
@@ -37,12 +25,7 @@ export default function Collapse({
         open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
       )}
     >
-      <div
-        className={cn(
-          'min-h-0',
-          open && overflowVisibleWhenOpen ? 'overflow-visible' : 'overflow-hidden',
-        )}
-      >
+      <div className="min-h-0 overflow-hidden">
         <div
           className={cn(
             'transition-opacity duration-200 ease-out motion-reduce:transition-none',

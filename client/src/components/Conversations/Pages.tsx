@@ -1,6 +1,4 @@
 import React from 'react';
-import { Button } from '@librechat/client';
-import { useLocalize } from '~/hooks';
 
 type TPagesProps = {
   pages: number;
@@ -17,7 +15,6 @@ export default function Pages({
   previousPage,
   setPageNumber,
 }: TPagesProps) {
-  const localize = useLocalize();
   const clickHandler =
     (func: () => Promise<void>) => async (e: React.MouseEvent<HTMLButtonElement>) => {
       e.preventDefault();
@@ -30,35 +27,29 @@ export default function Pages({
 
   return pageNumber == 1 && pages == 1 ? null : (
     <div className="m-auto mb-2 mt-4 flex items-center justify-center gap-2">
-      <Button
-        variant="ghost"
-        size="sm"
-        aria-label={localize('com_ui_prev')}
+      <button
         onClick={clickHandler(previousPage)}
         className={
-          'm-auto flex gap-2 text-text-primary disabled:text-text-tertiary' +
+          'btn btn-small bg-transition m-auto flex gap-2 transition hover:bg-gray-800 disabled:text-gray-300 dark:text-white dark:disabled:text-gray-400' +
           (pageNumber <= 1 ? ' hidden-visibility' : '')
         }
         disabled={pageNumber <= 1}
       >
         &lt;
-      </Button>
-      <span className="flex-none text-text-tertiary">
+      </button>
+      <span className="flex-none text-gray-400">
         {pageNumber} / {pages}
       </span>
-      <Button
-        variant="ghost"
-        size="sm"
-        aria-label={localize('com_ui_next')}
+      <button
         onClick={clickHandler(nextPage)}
         className={
-          'm-auto flex gap-2 text-text-primary disabled:text-text-tertiary' +
+          'btn btn-small bg-transition m-auto flex gap-2 transition hover:bg-gray-800 disabled:text-gray-300 dark:text-white dark:disabled:text-gray-400' +
           (pageNumber >= pages ? ' hidden-visibility' : '')
         }
         disabled={pageNumber >= pages}
       >
         &gt;
-      </Button>
+      </button>
     </div>
   );
 }

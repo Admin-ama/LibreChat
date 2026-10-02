@@ -11,7 +11,6 @@ import { useLocalize } from '~/hooks';
 
 interface AccessRolesPickerProps {
   id?: string;
-  ariaLabel?: string;
   resourceType?: ResourceType;
   selectedRoleId?: AccessRoleIds;
   onRoleChange: (roleId: AccessRoleIds) => void;
@@ -20,14 +19,12 @@ interface AccessRolesPickerProps {
 
 export default function AccessRolesPicker({
   id,
-  ariaLabel,
   resourceType = ResourceType.AGENT,
   selectedRoleId = AccessRoleIds.AGENT_VIEWER,
   onRoleChange,
   className = '',
 }: AccessRolesPickerProps) {
   const localize = useLocalize();
-  const menuId = React.useId();
   const [isOpen, setIsOpen] = React.useState(false);
   const { data: accessRoles, isLoading: rolesLoading } = useGetAccessRolesQuery(resourceType);
 
@@ -74,17 +71,14 @@ export default function AccessRolesPicker({
   });
 
   return (
-    <div className={className}>
+    <div className={className} id={id}>
       <DropdownPopup
-        menuId={`access-roles-menu-${menuId}`}
+        menuId="access-roles-menu"
         isOpen={isOpen}
         setIsOpen={setIsOpen}
         trigger={
           <Ariakit.MenuButton
-            id={id}
-            aria-label={
-              ariaLabel || selectedRoleInfo?.description || localize('com_ui_role_select')
-            }
+            aria-label={selectedRoleInfo?.description || 'Select role'}
             className={cn(
               'flex items-center justify-between gap-2 rounded-xl border border-border-light bg-transparent px-3 py-2 text-sm transition-colors hover:bg-surface-tertiary',
             )}

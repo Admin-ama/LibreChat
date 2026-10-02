@@ -19,7 +19,6 @@ interface DropdownProps {
   gutter?: number;
   modal?: boolean;
   portal?: boolean;
-  portalElement?: Ariakit.MenuProps['portalElement'];
   preserveTabOrder?: boolean;
   focusLoop?: boolean;
   menuId: string;
@@ -89,11 +88,7 @@ const Menu: React.FC<MenuProps> = ({
       finalFocus={finalFocus}
       unmountOnHide={unmountOnHide}
       preserveTabOrder={preserveTabOrder}
-      /* Portaled menus land beside modal OGDialog layers, which set
-         `pointer-events: none` on body and re-enable it only on their own
-         content. Without this the menu inherits `none` and its items become
-         hit-transparent (danny-avila/LibreChat#14487). */
-      style={{ zIndex, pointerEvents: 'auto', ...style }}
+      style={{ zIndex, ...style }}
       className={cn('popover-ui', className)}
       {...props}
     >
@@ -178,7 +173,7 @@ const Menu: React.FC<MenuProps> = ({
               )}
               {item.label}
               {item.kbd != null && (
-                <kbd className="ml-auto hidden font-sans text-xs text-text-tertiary group-hover:inline group-focus:inline">
+                <kbd className="ml-auto hidden font-sans text-xs text-black/50 group-hover:inline group-focus:inline dark:text-white/50">
                   ⌘{item.kbd}
                 </kbd>
               )}

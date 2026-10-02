@@ -1,4 +1,10 @@
-import type { PrincipalType, PrincipalModel, TCustomConfig } from 'librechat-data-provider';
+import type {
+  TAdminUser,
+  PrincipalType,
+  PrincipalModel,
+  TCustomConfig,
+  TAdminUserSearchResponse,
+} from 'librechat-data-provider';
 
 /* ── Capability types (defined alongside the SystemCapabilities constant) ── */
 
@@ -65,20 +71,13 @@ export type AuditCategory = (typeof AUDIT_CATEGORIES)[number];
  * action maps unambiguously to a category. The Mongoose schema enum and the
  * HTTP handler's whitelist both consume this constant so they cannot drift.
  */
-export const AUDIT_ACTIONS = [
-  'grant.assigned',
-  'grant.removed',
-  'permission.insights_assigned',
-  'permission.insights_removed',
-] as const;
+export const AUDIT_ACTIONS = ['grant.assigned', 'grant.removed'] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
 /** Maps each action to its category so writers never pass both. */
 export const AUDIT_ACTION_CATEGORY: Record<AuditAction, AuditCategory> = {
   'grant.assigned': 'grant',
   'grant.removed': 'grant',
-  'permission.insights_assigned': 'permission',
-  'permission.insights_removed': 'permission',
 };
 
 /** Result of the audited operation. Kept first-class instead of being encoded
@@ -200,23 +199,7 @@ export type AdminMember = {
 };
 
 /** Full user info returned by the admin user list endpoint. */
-export type AdminUserListItem = {
-  id: string;
-  name: string;
-  username: string;
-  email: string;
-  avatar: string;
-  role: string;
-  provider: string;
-  createdAt?: string;
-  updatedAt?: string;
-};
+export type AdminUserListItem = TAdminUser;
 
 /** Minimal user info returned by user search endpoints. */
-export type AdminUserSearchResult = {
-  id: string;
-  name: string;
-  email: string;
-  username?: string;
-  avatarUrl?: string;
-};
+export type AdminUserSearchResult = TAdminUserSearchResponse['users'][number];

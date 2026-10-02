@@ -91,9 +91,6 @@ const fluxApiJsonSchema = {
 const displayMessage =
   "Flux displayed an image. All generated images are already plainly visible, so don't repeat the descriptions in detail. Do not list download links as they are available in the UI already. The user may download the images by clicking on them, but do not mention anything about downloading to the user.";
 
-/** Endpoints that require a `finetune_id`, regardless of which `action` the caller selected. */
-const FINETUNED_ENDPOINTS = ['/v1/flux-pro-finetuned', '/v1/flux-pro-1.1-ultra-finetuned'];
-
 /**
  * FluxAPI - A tool for generating high-quality images from text prompts using the Flux API.
  * Each call generates one image. If multiple images are needed, make multiple consecutive calls with the same or varied prompts.
@@ -203,9 +200,8 @@ class FluxAPI extends Tool {
       return this.getMyFinetunes(requestApiKey);
     }
 
-    // Handle finetuned generation. Route by endpoint too, since a finetuned
-    // endpoint requires finetune_id regardless of which action was selected.
-    if (action === 'generate_finetuned' || FINETUNED_ENDPOINTS.includes(imageData.endpoint)) {
+    // Handle finetuned generation
+    if (action === 'generate_finetuned') {
       return this.generateFinetunedImage(imageData, requestApiKey);
     }
 
@@ -438,11 +434,12 @@ class FluxAPI extends Tool {
     }
 
     // Validate endpoint is appropriate for finetuned generation
+    const validFinetunedEndpoints = ['/v1/flux-pro-finetuned', '/v1/flux-pro-1.1-ultra-finetuned'];
     const endpoint = imageData.endpoint || '/v1/flux-pro-finetuned';
 
-    if (!FINETUNED_ENDPOINTS.includes(endpoint)) {
+    if (!validFinetunedEndpoints.includes(endpoint)) {
       throw new Error(
-        `Invalid endpoint for finetuned generation. Must be one of: ${FINETUNED_ENDPOINTS.join(', ')}`,
+        `Invalid endpoint for finetuned generation. Must be one of: ${validFinetunedEndpoints.join(', ')}`,
       );
     }
 

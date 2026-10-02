@@ -1,5 +1,4 @@
 import type { Redis, Cluster } from 'ioredis';
-import { closeRedisClients } from '../../cache/__tests__/redisClients.helper';
 
 /**
  * Integration tests for concurrency middleware atomic Lua scripts.
@@ -62,7 +61,17 @@ describe('Concurrency Middleware Integration Tests', () => {
   });
 
   afterAll(async () => {
-    await closeRedisClients();
+    if (ioredisClient) {
+      try {
+        await ioredisClient.quit();
+      } catch {
+        try {
+          ioredisClient.disconnect();
+        } catch {
+          // Ignore
+        }
+      }
+    }
     process.env = originalEnv;
   });
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Button, OGDialog, OGDialogTemplate } from '@librechat/client';
 import {
   AuthType,
@@ -7,8 +7,8 @@ import {
   ScraperProviders,
   SearchCategories,
 } from 'librechat-data-provider';
-import type { UseFormRegister, UseFormHandleSubmit, UseFormSetValue } from 'react-hook-form';
 import type { SearchApiKeyFormData } from '~/hooks/Plugins/useAuthSearchTool';
+import type { UseFormRegister, UseFormHandleSubmit } from 'react-hook-form';
 import InputSection, { type DropdownOption } from './InputSection';
 import { useGetStartupConfig } from '~/data-provider';
 import { useLocalize } from '~/hooks';
@@ -21,13 +21,9 @@ export default function ApiKeyDialog({
   authTypes,
   isToolAuthenticated,
   register,
-  setValue,
   handleSubmit,
   triggerRef,
   triggerRefs,
-  searchProvider,
-  scraperProvider,
-  rerankerType,
 }: {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
@@ -36,53 +32,22 @@ export default function ApiKeyDialog({
   authTypes: [string, AuthType][];
   isToolAuthenticated: boolean;
   register: UseFormRegister<SearchApiKeyFormData>;
-  setValue: UseFormSetValue<SearchApiKeyFormData>;
   handleSubmit: UseFormHandleSubmit<SearchApiKeyFormData>;
   triggerRef?: React.RefObject<HTMLInputElement | HTMLButtonElement>;
   triggerRefs?: React.RefObject<HTMLInputElement | HTMLButtonElement>[];
-  searchProvider?: SearchProviders;
-  scraperProvider?: ScraperProviders;
-  rerankerType?: RerankerTypes;
 }) {
   const localize = useLocalize();
   const { data: config } = useGetStartupConfig();
 
   const [selectedProvider, setSelectedProvider] = useState(
-    config?.webSearch?.searchProvider || searchProvider || SearchProviders.SERPER,
+    config?.webSearch?.searchProvider || SearchProviders.SERPER,
   );
   const [selectedReranker, setSelectedReranker] = useState(
-    config?.webSearch?.rerankerType || rerankerType || RerankerTypes.JINA,
+    config?.webSearch?.rerankerType || RerankerTypes.JINA,
   );
   const [selectedScraper, setSelectedScraper] = useState(
-    config?.webSearch?.scraperProvider || scraperProvider || ScraperProviders.FIRECRAWL,
+    config?.webSearch?.scraperProvider || ScraperProviders.FIRECRAWL,
   );
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-    setSelectedProvider(
-      config?.webSearch?.searchProvider || searchProvider || SearchProviders.SERPER,
-    );
-    setSelectedScraper(
-      config?.webSearch?.scraperProvider || scraperProvider || ScraperProviders.FIRECRAWL,
-    );
-    setSelectedReranker(config?.webSearch?.rerankerType || rerankerType || RerankerTypes.JINA);
-  }, [
-    config?.webSearch?.rerankerType,
-    config?.webSearch?.scraperProvider,
-    config?.webSearch?.searchProvider,
-    isOpen,
-    rerankerType,
-    scraperProvider,
-    searchProvider,
-  ]);
-
-  useEffect(() => {
-    setValue('selectedProvider', selectedProvider);
-    setValue('selectedScraper', selectedScraper);
-    setValue('selectedReranker', selectedReranker);
-  }, [selectedProvider, selectedReranker, selectedScraper, setValue]);
 
   const providerOptions: DropdownOption[] = [
     {
@@ -127,31 +92,9 @@ export default function ApiKeyDialog({
         },
       },
     },
-    {
-      key: SearchProviders.KEENABLE,
-      label: localize('com_ui_web_search_provider_keenable'),
-      inputs: {
-        keenableApiKey: {
-          placeholder: localize('com_ui_enter_api_key_optional'),
-          type: 'password' as const,
-          link: {
-            url: 'https://keenable.ai',
-            text: localize('com_ui_web_search_provider_keenable_key'),
-          },
-        },
-        keenableApiUrl: {
-          placeholder: localize('com_ui_web_search_keenable_url'),
-          type: 'text' as const,
-        },
-      },
-    },
   ];
 
   const rerankerOptions: DropdownOption[] = [
-    {
-      key: RerankerTypes.NONE,
-      label: localize('com_ui_web_search_reranker_none'),
-    },
     {
       key: RerankerTypes.JINA,
       label: localize('com_ui_web_search_reranker_jina'),
@@ -237,20 +180,6 @@ export default function ApiKeyDialog({
         },
       },
     },
-    {
-      key: ScraperProviders.KEENABLE,
-      label: localize('com_ui_web_search_scraper_keenable'),
-      inputs: {
-        keenableApiKey: {
-          placeholder: localize('com_ui_enter_api_key_optional'),
-          type: 'password' as const,
-          link: {
-            url: 'https://keenable.ai',
-            text: localize('com_ui_web_search_provider_keenable_key'),
-          },
-        },
-      },
-    },
   ];
 
   const [dropdownOpen, setDropdownOpen] = useState({
@@ -275,20 +204,6 @@ export default function ApiKeyDialog({
     setSelectedScraper(key as ScraperProviders);
   };
 
-  const handleVisibleSubmit = (data: SearchApiKeyFormData) => {
-    const visibleData = { ...data };
-    if (providerAuthType === AuthType.SYSTEM_DEFINED || config?.webSearch?.searchProvider != null) {
-      delete visibleData.selectedProvider;
-    }
-    if (scraperAuthType === AuthType.SYSTEM_DEFINED || config?.webSearch?.scraperProvider != null) {
-      delete visibleData.selectedScraper;
-    }
-    if (rerankerAuthType === AuthType.SYSTEM_DEFINED || config?.webSearch?.rerankerType != null) {
-      delete visibleData.selectedReranker;
-    }
-    onSubmit(visibleData);
-  };
-
   return (
     <OGDialog
       open={isOpen}
@@ -302,7 +217,7 @@ export default function ApiKeyDialog({
         main={
           <>
             <div className="mb-4 text-center font-medium">{localize('com_ui_web_search')}</div>
-            <form onSubmit={handleSubmit(handleVisibleSubmit)}>
+            <form onSubmit={handleSubmit(onSubmit)}>
               {/* Provider Section */}
               {providerAuthType !== AuthType.SYSTEM_DEFINED && (
                 <InputSection
@@ -357,13 +272,17 @@ export default function ApiKeyDialog({
           </>
         }
         selection={{
-          selectHandler: handleSubmit(handleVisibleSubmit),
-          selectClasses: 'bg-surface-submit hover:bg-surface-submit-hover text-text-on-status',
+          selectHandler: handleSubmit(onSubmit),
+          selectClasses: 'bg-green-500 hover:bg-green-600 text-white',
           selectText: localize('com_ui_save'),
         }}
         buttons={
           isToolAuthenticated && (
-            <Button variant="destructive" onClick={onRevoke} aria-label={localize('com_ui_revoke')}>
+            <Button
+              onClick={onRevoke}
+              className="bg-red-500 text-white hover:bg-red-600"
+              aria-label={localize('com_ui_revoke')}
+            >
               {localize('com_ui_revoke')}
             </Button>
           )

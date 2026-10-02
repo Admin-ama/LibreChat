@@ -1,20 +1,13 @@
 import { useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { AuthType, Tools, QueryKeys } from 'librechat-data-provider';
 import { useUpdateUserPluginsMutation } from 'librechat-data-provider/react-query';
-import {
-  Tools,
-  AuthType,
-  QueryKeys,
-  RerankerTypes,
-  SearchProviders,
-  ScraperProviders,
-} from 'librechat-data-provider';
 
 export type SearchApiKeyFormData = {
   // Selected options
-  selectedProvider?: SearchProviders;
-  selectedReranker?: RerankerTypes;
-  selectedScraper?: ScraperProviders;
+  selectedProvider: string;
+  selectedReranker: string;
+  selectedScraper: string;
   // API keys and URLs
   serperApiKey: string;
   searxngInstanceUrl: string;
@@ -22,14 +15,10 @@ export type SearchApiKeyFormData = {
   firecrawlApiKey: string;
   firecrawlApiUrl: string;
   tavilyApiKey: string;
-  keenableApiKey: string;
-  keenableApiUrl: string;
   jinaApiKey: string;
   jinaApiUrl: string;
   cohereApiKey: string;
 };
-
-export type SearchApiKeyDirtyFields = Partial<Record<keyof SearchApiKeyFormData, boolean>>;
 
 const useAuthSearchTool = (options?: { isEntityTool: boolean }) => {
   const queryClient = useQueryClient();
@@ -39,9 +28,6 @@ const useAuthSearchTool = (options?: { isEntityTool: boolean }) => {
       queryClient.setQueryData([QueryKeys.toolAuth, Tools.web_search], () => {
         return {
           authenticated: vars.action === 'install',
-          searchProvider: vars.auth?.selectedProvider,
-          scraperProvider: vars.auth?.selectedScraper,
-          rerankerType: vars.auth?.selectedReranker,
           authTypes:
             vars.action === 'install'
               ? [
@@ -62,27 +48,20 @@ const useAuthSearchTool = (options?: { isEntityTool: boolean }) => {
   });
 
   const installTool = useCallback(
-    (data: SearchApiKeyFormData, dirtyFields: SearchApiKeyDirtyFields = {}) => {
+    (data: SearchApiKeyFormData) => {
       const auth = Object.entries({
-        selectedProvider: data.selectedProvider,
-        selectedScraper: data.selectedScraper,
-        selectedReranker: data.selectedReranker,
         serperApiKey: data.serperApiKey,
         searxngInstanceUrl: data.searxngInstanceUrl,
         searxngApiKey: data.searxngApiKey,
         firecrawlApiKey: data.firecrawlApiKey,
         firecrawlApiUrl: data.firecrawlApiUrl,
         tavilyApiKey: data.tavilyApiKey,
-        keenableApiKey: data.keenableApiKey,
-        keenableApiUrl: data.keenableApiUrl,
         jinaApiKey: data.jinaApiKey,
         jinaApiUrl: data.jinaApiUrl,
         cohereApiKey: data.cohereApiKey,
       }).reduce(
         (acc, [key, value]) => {
-          const wasExplicitlyCleared =
-            value === '' && dirtyFields[key as keyof SearchApiKeyFormData] === true;
-          if (value || wasExplicitlyCleared) {
+          if (value) {
             acc[key] = value;
           }
           return acc;

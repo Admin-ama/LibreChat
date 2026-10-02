@@ -208,12 +208,10 @@ describe('GraphApiService', () => {
         );
       }
 
-      /** The entry expires 30s (OPENID_EXPIRY_BUFFER_SECONDS) before the credential it holds, so a
-       *  token served from cache cannot expire in transit and 401 against Graph. */
       expect(mockTokensCache.set).toHaveBeenCalledWith(
         'test-user:graph',
         { access_token: 'mocked-graph-token' },
-        3570000,
+        3600000,
       );
 
       expect(result).toBe('mocked-graph-token');

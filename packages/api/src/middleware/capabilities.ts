@@ -1,6 +1,5 @@
 import { isMainThread } from 'node:worker_threads';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { PrincipalType } from 'librechat-data-provider';
 import {
   logger,
   configCapability,
@@ -62,7 +61,6 @@ export type HasCapabilityFn = (
 
 export type RequireCapabilityFn = (
   capability: SystemCapability,
-  options?: { platformOnly?: boolean },
 ) => (req: ServerRequest, res: Response, next: NextFunction) => Promise<void>;
 
 export type HasConfigCapabilityFn = (
@@ -70,11 +68,6 @@ export type HasConfigCapabilityFn = (
   section: ConfigSection | null,
   verb?: 'manage' | 'read',
 ) => Promise<boolean>;
-
-export type GetHeldCapabilitiesFn = (
-  user: CapabilityUser,
-  capabilities: SystemCapability[],
-) => Promise<Set<SystemCapability>>;
 
 /**
  * Per-request store for caching resolved principals and capability check results.
@@ -148,7 +141,6 @@ export function generateCapabilityCheck(deps: CapabilityDeps): {
   hasCapability: HasCapabilityFn;
   requireCapability: RequireCapabilityFn;
   hasConfigCapability: HasConfigCapabilityFn;
-  getHeldCapabilities: GetHeldCapabilitiesFn;
   hasAnyConfigReadAccess: (user: CapabilityUser) => Promise<boolean>;
   getReadableConfigSections: GetReadableConfigSectionsFn;
 } {
@@ -183,14 +175,6 @@ export function generateCapabilityCheck(deps: CapabilityDeps): {
     return checkAny({ principals, tenantId: user.tenantId });
   }
 
-  async function getHeldCapabilities(
-    user: CapabilityUser,
-    capabilities: SystemCapability[],
-  ): Promise<Set<SystemCapability>> {
-    const principals = await resolvePrincipals(user);
-    return getHeldCaps({ principals, capabilities, tenantId: user.tenantId });
-  }
-
   /**
    * Resolves which of `sections` the user can read in a single batched
    * query, instead of one `hasConfigCapability` round trip per section.
@@ -199,12 +183,17 @@ export function generateCapabilityCheck(deps: CapabilityDeps): {
     user: CapabilityUser,
     sections: ConfigSection[],
   ): Promise<{ broad: boolean; sections: Set<string> }> {
+    const principals = await resolvePrincipals(user);
     const capsToCheck = [
       SystemCapabilities.READ_CONFIGS,
       SystemCapabilities.MANAGE_CONFIGS,
       ...sections.map(readConfigCapability),
     ];
-    const held = await getHeldCapabilities(user, capsToCheck);
+    const held = await getHeldCaps({
+      principals,
+      capabilities: capsToCheck,
+      tenantId: user.tenantId,
+    });
     const broad =
       held.has(SystemCapabilities.READ_CONFIGS) || held.has(SystemCapabilities.MANAGE_CONFIGS);
     const readableSections = new Set(
@@ -216,7 +205,6 @@ export function generateCapabilityCheck(deps: CapabilityDeps): {
   async function hasCapability(
     user: CapabilityUser,
     capability: SystemCapability,
-    { platformOnly = false }: { platformOnly?: boolean } = {},
   ): Promise<boolean> {
     if (!isMainThread && !workerWarned) {
       workerWarned = true;
@@ -229,21 +217,17 @@ export function generateCapabilityCheck(deps: CapabilityDeps): {
 
     const store = capabilityStore.getStore();
 
-    const resultKey = `${user.id}:${user.tenantId ?? ''}:${capability}:${platformOnly ? 'platform' : 'tenant'}`;
+    const resultKey = `${user.id}:${user.tenantId ?? ''}:${capability}`;
     const cached = store?.results.get(resultKey);
     if (cached !== undefined) {
       return cached;
     }
 
-    const resolvedPrincipals = await resolvePrincipals(user);
-    const principals =
-      platformOnly && user.tenantId
-        ? resolvedPrincipals.filter(({ principalType }) => principalType === PrincipalType.USER)
-        : resolvedPrincipals;
+    const principals = await resolvePrincipals(user);
     const result = await hasCapabilityForPrincipals({
       principals,
       capability,
-      tenantId: platformOnly ? undefined : user.tenantId,
+      tenantId: user.tenantId,
     });
     store?.results.set(resultKey, result);
     return result;
@@ -272,10 +256,7 @@ export function generateCapabilityCheck(deps: CapabilityDeps): {
     return hasCapability(user, sectionCap);
   }
 
-  function requireCapability(
-    capability: SystemCapability,
-    { platformOnly = false }: { platformOnly?: boolean } = {},
-  ) {
+  function requireCapability(capability: SystemCapability) {
     return async (req: ServerRequest, res: Response, next: NextFunction) => {
       try {
         if (!req.user) {
@@ -296,7 +277,7 @@ export function generateCapabilityCheck(deps: CapabilityDeps): {
           idOnTheSource: req.user.idOnTheSource ?? null,
         };
 
-        if (await hasCapability(user, capability, { platformOnly })) {
+        if (await hasCapability(user, capability)) {
           next();
           return;
         }
@@ -317,7 +298,6 @@ export function generateCapabilityCheck(deps: CapabilityDeps): {
     hasCapability,
     requireCapability,
     hasConfigCapability,
-    getHeldCapabilities,
     hasAnyConfigReadAccess,
     getReadableConfigSections,
   };

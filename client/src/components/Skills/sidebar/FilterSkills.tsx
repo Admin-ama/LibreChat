@@ -1,8 +1,8 @@
 import React from 'react';
 import { FilterInput } from '@librechat/client';
-import { PermissionTypes, Permissions } from 'librechat-data-provider';
-import { CreateSkillMenu } from '~/components/Skills/buttons';
-import { useHasAccess, useLocalize } from '~/hooks';
+import { SystemRoles, PermissionTypes, Permissions } from 'librechat-data-provider';
+import { AdminSettings, CreateSkillMenu } from '~/components/Skills/buttons';
+import { useHasAccess, useAuthContext, useLocalize } from '~/hooks';
 import { cn } from '~/utils';
 
 export default function FilterSkills({
@@ -15,6 +15,7 @@ export default function FilterSkills({
   className?: string;
 }) {
   const localize = useLocalize();
+  const { user } = useAuthContext();
   const hasCreateAccess = useHasAccess({
     permissionType: PermissionTypes.SKILLS,
     permission: Permissions.CREATE,
@@ -32,6 +33,11 @@ export default function FilterSkills({
         />
         {hasCreateAccess && <CreateSkillMenu />}
       </div>
+      {user?.role === SystemRoles.ADMIN && (
+        <div className="flex w-full items-center justify-end">
+          <AdminSettings />
+        </div>
+      )}
     </div>
   );
 }

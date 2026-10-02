@@ -45,8 +45,7 @@ const denyRequest = async (req, res, errorMessage) => {
     await saveMessage(
       {
         userId: req?.user?.id,
-        isTemporary: req?.resolvedConversation?.isTemporary ?? req?.body?.isTemporary,
-        expiredAt: req?.resolvedConversation?.expiredAt,
+        isTemporary: req?.body?.isTemporary,
         interfaceConfig: req?.config?.interfaceConfig,
       },
       { ...userMessage, user: req.user.id },

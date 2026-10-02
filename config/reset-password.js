@@ -4,22 +4,14 @@ const readline = require('readline');
 const mongoose = require('mongoose');
 const { User } = require('@librechat/data-schemas').createModels(mongoose);
 require('module-alias')({ base: path.resolve(__dirname, '..', 'api') });
-const { askSilentQuestion } = require('./helpers');
 const connect = require('./connect');
 
-const question = (query) => {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+});
 
-  return new Promise((resolve) =>
-    rl.question(query, (answer) => {
-      rl.close();
-      resolve(answer);
-    }),
-  );
-};
+const question = (query) => new Promise((resolve) => rl.question(query, resolve));
 
 const resetPassword = async () => {
   try {
@@ -37,13 +29,13 @@ const resetPassword = async () => {
     let newPassword;
 
     while (!validPassword) {
-      newPassword = await askSilentQuestion('Enter new password: ');
+      newPassword = await question('Enter new password: ');
       if (newPassword.length < 8) {
         console.log('Password must be at least 8 characters! Please try again.');
         continue;
       }
 
-      const confirmPassword = await askSilentQuestion('Confirm new password: ');
+      const confirmPassword = await question('Confirm new password: ');
       if (newPassword !== confirmPassword) {
         console.log('Passwords do not match! Please try again.');
         continue;
@@ -68,6 +60,8 @@ const resetPassword = async () => {
   } catch (err) {
     console.error('Error resetting password:', err);
     process.exit(1);
+  } finally {
+    rl.close();
   }
 };
 

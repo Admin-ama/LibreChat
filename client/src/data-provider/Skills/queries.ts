@@ -1,5 +1,10 @@
-import { QueryKeys, dataService } from 'librechat-data-provider';
 import { useQuery, useMutation, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { QueryKeys, dataService } from 'librechat-data-provider';
+import type {
+  QueryObserverResult,
+  UseQueryOptions,
+  UseInfiniteQueryOptions,
+} from '@tanstack/react-query';
 import type {
   TSkill,
   TSkillListRequest,
@@ -8,11 +13,6 @@ import type {
   TListSkillFilesResponse,
   TSkillFileContentResponse,
 } from 'librechat-data-provider';
-import type {
-  QueryObserverResult,
-  UseQueryOptions,
-  UseInfiniteQueryOptions,
-} from '@tanstack/react-query';
 
 /**
  * Paginated skill list (single page) — use this for small lists or when you want to
@@ -128,33 +128,21 @@ export const useListSkillFilesQuery = (
 /**
  * Fetch a single skill file's content. Returns cached text from the DB when
  * available; otherwise the backend reads from storage, caches, and returns it.
- * Confirmed content stays fresh until invalidated; unavailable results refetch on revisit.
+ * Uses `staleTime: Infinity` because file content is cached server-side.
  */
 export const useGetSkillFileContentQuery = (
   skillId: string | null | undefined,
   relativePath: string | null | undefined,
-  config?: UseQueryOptions<TSkillFileContentResponse | null>,
-): QueryObserverResult<TSkillFileContentResponse | null> => {
+  config?: UseQueryOptions<TSkillFileContentResponse>,
+): QueryObserverResult<TSkillFileContentResponse> => {
   const enabled = !!skillId && !!relativePath;
-  return useQuery<TSkillFileContentResponse | null>(
+  return useQuery<TSkillFileContentResponse>(
     [QueryKeys.skillFileContent, skillId, relativePath],
-    async () => {
-      try {
-        return await dataService.getSkillFileContent(skillId as string, relativePath as string);
-      } catch (error) {
-        const status = (error as { response?: { status?: number } })?.response?.status;
-        // A terminal response replaces cached bytes, including on background reads.
-        // Throw transient failures so React Query retains the last confirmed content.
-        if (status === 404 || status === 410 || status === 403) {
-          return null;
-        }
-        throw error;
-      }
-    },
+    () => dataService.getSkillFileContent(skillId as string, relativePath as string),
     {
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
-      refetchOnMount: (query) => (query.state.data === null ? 'always' : false),
+      refetchOnMount: false,
       retry: false,
       staleTime: Infinity,
       ...config,

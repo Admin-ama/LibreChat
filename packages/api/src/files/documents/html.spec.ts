@@ -729,17 +729,11 @@ describe('Office HTML producers', () => {
       ['noext', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'spreadsheet'],
       ['noext', 'application/vnd.ms-excel', 'spreadsheet'],
       ['noext', 'application/vnd.oasis.opendocument.spreadsheet', 'spreadsheet'],
-      ['deck.pptx', '', 'presentation'],
-      ['template.potx', '', 'presentation'],
+      ['deck.pptx', '', 'pptx'],
       [
         'noext',
         'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        'presentation',
-      ],
-      [
-        'noext',
-        'application/vnd.openxmlformats-officedocument.presentationml.template',
-        'presentation',
+        'pptx',
       ],
     ])('classifies (%s, %s) as %s', (name, mime, expected) => {
       expect(officeHtmlBucket(name, mime)).toBe(expected);
@@ -766,7 +760,7 @@ describe('Office HTML producers', () => {
      * documented "extension wins" precedence is enforced by checking
      * extensions exhaustively before any MIME pattern fires. */
     it.each([
-      ['deck.pptx', 'text/csv', 'presentation'],
+      ['deck.pptx', 'text/csv', 'pptx'],
       ['workbook.xlsx', 'text/csv', 'spreadsheet'],
       [
         'legacy.xls',
@@ -844,7 +838,7 @@ describe('Office HTML producers', () => {
       [
         'deck',
         'application/vnd.openxmlformats-officedocument.presentationml.presentation; foo=bar',
-        'presentation',
+        'pptx',
       ],
     ])('strips MIME parameters before matching: (%s, %s) → %s', (name, mime, expected) => {
       expect(officeHtmlBucket(name, mime)).toBe(expected);

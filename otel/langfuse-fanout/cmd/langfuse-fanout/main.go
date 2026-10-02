@@ -42,9 +42,6 @@ const (
 	metricsPath           = "/metrics"
 	tenantExportAttribute = "librechat.langfuse.tenant_export.enabled"
 	tenantDestAttribute   = "librechat.langfuse.destination"
-	tenantIDAttribute     = "librechat.tenant.id"
-	unknownTenantID       = "<unknown>"
-	multipleTenantIDs     = "<multiple>"
 )
 
 type config struct {
@@ -272,25 +269,19 @@ func (g *gateway) handle(w http.ResponseWriter, r *http.Request) {
 func (g *gateway) handleTraces(w http.ResponseWriter, r *http.Request, route route) {
 	body, err := readMaybeGzip(r)
 	if err != nil {
-		g.recordTraceExport(route, "error", unknownTenantID)
 		g.writeGatewayError(w, r, route, "trace_export", http.StatusBadRequest, "failed to read request body", err)
 		return
 	}
 
 	contentType := r.Header.Get("Content-Type")
-	tenantID := unknownTenantID
-	authorizedTenantRoute := route.destination != "" &&
+	if route.destination != "" &&
 		g.cfg.tenants[route.destination] != "" &&
-		strings.TrimSpace(r.Header.Get("Authorization")) != ""
-	if authorizedTenantRoute {
-		body, tenantID, err = addTenantRouteAttributes(body, contentType, route.destination)
+		strings.TrimSpace(r.Header.Get("Authorization")) != "" {
+		body, err = addTenantRouteAttributes(body, contentType, route.destination)
 		if err != nil {
-			g.recordTraceExport(route, "error", tenantID)
 			g.writeGatewayError(w, r, route, "trace_route_attributes", http.StatusBadRequest, "failed to add OTLP tenant routing attributes", err)
 			return
 		}
-	} else if g.metrics != nil {
-		tenantID = extractTraceTenantID(body, contentType)
 	}
 
 	contentEncoding := ""
@@ -298,7 +289,6 @@ func (g *gateway) handleTraces(w http.ResponseWriter, r *http.Request, route rou
 		contentEncoding = "gzip"
 		body, err = gzipBytes(body)
 		if err != nil {
-			g.recordTraceExport(route, "error", tenantID)
 			g.writeGatewayError(w, r, route, "trace_gzip", http.StatusInternalServerError, "failed to encode request body", err)
 			return
 		}
@@ -306,13 +296,13 @@ func (g *gateway) handleTraces(w http.ResponseWriter, r *http.Request, route rou
 
 	resp, err := g.forwardTraceToCollector(r.Context(), r.Header, body, contentType, contentEncoding)
 	if err != nil {
-		g.recordTraceExport(route, "error", tenantID)
+		g.recordTraceExport(route, "error")
 		g.writeGatewayError(w, r, route, "trace_collector", http.StatusBadGateway, "trace collector export failed", err)
 		return
 	}
 	defer resp.Body.Close()
 
-	g.recordTraceExport(route, "success", tenantID)
+	g.recordTraceExport(route, "success")
 	copyResponseHeaders(w.Header(), resp.Header)
 	w.WriteHeader(resp.StatusCode)
 	_, _ = io.Copy(w, resp.Body)
@@ -668,9 +658,6 @@ func (g *gateway) patchMedia(ctx context.Context, dest destination, path string,
 }
 
 func (g *gateway) putMedia(ctx context.Context, dest uploadDestination, body []byte, originalHeaders http.Header) (int, error) {
-	if err := validateMediaUploadURL(dest.UploadURL); err != nil {
-		return 0, err
-	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, dest.UploadURL, bytes.NewReader(body))
 	if err != nil {
 		return 0, err
@@ -693,11 +680,7 @@ func (g *gateway) putMedia(ctx context.Context, dest uploadDestination, body []b
 			req.Header.Set("x-amz-checksum-sha256", value)
 		}
 	}
-	uploadClient := *g.cfg.client
-	uploadClient.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
-		return http.ErrUseLastResponse
-	}
-	resp, err := g.doUpstreamWithClient(&uploadClient, req, "media_upload", dest.Name)
+	resp, err := g.doUpstream(req, "media_upload", dest.Name)
 	if err != nil {
 		return 0, err
 	}
@@ -723,12 +706,8 @@ func (g *gateway) doExpect2xx(operation string, destination string, req *http.Re
 }
 
 func (g *gateway) doUpstream(req *http.Request, operation string, destination string) (*http.Response, error) {
-	return g.doUpstreamWithClient(g.cfg.client, req, operation, destination)
-}
-
-func (g *gateway) doUpstreamWithClient(client *http.Client, req *http.Request, operation string, destination string) (*http.Response, error) {
 	startedAt := time.Now()
-	resp, err := client.Do(req)
+	resp, err := g.cfg.client.Do(req)
 	if err != nil {
 		duration := time.Since(startedAt)
 		if g.metrics != nil {
@@ -744,15 +723,11 @@ func (g *gateway) doUpstreamWithClient(client *http.Client, req *http.Request, o
 	return resp, nil
 }
 
-func (g *gateway) recordTraceExport(route route, result string, tenantID string) {
+func (g *gateway) recordTraceExport(route route, result string) {
 	if g.metrics == nil {
 		return
 	}
-	destination := centralName
-	if _, ok := g.cfg.tenants[route.destination]; ok {
-		destination = routeDestinationLabel(route)
-	}
-	g.metrics.recordTraceExport(destination, result, tenantID)
+	g.metrics.recordTraceExport(routeDestinationLabel(route), result)
 }
 
 func (g *gateway) recordMediaDivergence(kind string, destination string) {
@@ -788,111 +763,18 @@ func (g *gateway) recordUploadPlanStoreError(operation string) {
 	}
 }
 
-func addTenantRouteAttributes(body []byte, contentType string, destination string) ([]byte, string, error) {
+func addTenantRouteAttributes(body []byte, contentType string, destination string) ([]byte, error) {
 	if isJSONContentType(contentType) {
 		return addJSONTenantRouteAttributes(body, destination)
 	}
 	return addProtobufTenantRouteAttributes(body, destination)
 }
 
-func extractTraceTenantID(body []byte, contentType string) string {
-	if isJSONContentType(contentType) {
-		return extractJSONTraceTenantID(body)
-	}
-	return extractProtobufTraceTenantID(body)
-}
-
-func resolveTraceTenantID(tenantIDs map[string]struct{}) string {
-	if len(tenantIDs) == 0 {
-		return unknownTenantID
-	}
-	if len(tenantIDs) > 1 {
-		return multipleTenantIDs
-	}
-	for tenantID := range tenantIDs {
-		return tenantID
-	}
-	return unknownTenantID
-}
-
-func extractProtobufTraceTenantID(body []byte) string {
+func addProtobufTenantRouteAttributes(body []byte, destination string) ([]byte, error) {
 	var request tracepb.ExportTraceServiceRequest
 	if err := proto.Unmarshal(body, &request); err != nil {
-		return unknownTenantID
+		return nil, err
 	}
-	return protobufTraceTenantID(&request)
-}
-
-func protobufTraceTenantID(request *tracepb.ExportTraceServiceRequest) string {
-	tenantIDs := make(map[string]struct{})
-	for _, resourceSpan := range request.ResourceSpans {
-		for _, scopeSpan := range resourceSpan.ScopeSpans {
-			for _, span := range scopeSpan.Spans {
-				for _, attribute := range span.Attributes {
-					if attribute.Key != tenantIDAttribute {
-						continue
-					}
-					tenantID := strings.TrimSpace(attribute.Value.GetStringValue())
-					if tenantID != "" {
-						tenantIDs[tenantID] = struct{}{}
-						if len(tenantIDs) > 1 {
-							return multipleTenantIDs
-						}
-					}
-				}
-			}
-		}
-	}
-	return resolveTraceTenantID(tenantIDs)
-}
-
-func extractJSONTraceTenantID(body []byte) string {
-	var request map[string]any
-	if err := json.Unmarshal(body, &request); err != nil {
-		return unknownTenantID
-	}
-	return jsonTraceTenantID(request)
-}
-
-func jsonTraceTenantID(request map[string]any) string {
-	tenantIDs := make(map[string]struct{})
-	resourceSpans, _ := request["resourceSpans"].([]any)
-	for _, resourceSpan := range resourceSpans {
-		resourceSpanMap, _ := resourceSpan.(map[string]any)
-		scopeSpans, _ := resourceSpanMap["scopeSpans"].([]any)
-		for _, scopeSpan := range scopeSpans {
-			scopeSpanMap, _ := scopeSpan.(map[string]any)
-			spans, _ := scopeSpanMap["spans"].([]any)
-			for _, span := range spans {
-				spanMap, _ := span.(map[string]any)
-				attributes, _ := spanMap["attributes"].([]any)
-				for _, attribute := range attributes {
-					attributeMap, _ := attribute.(map[string]any)
-					if attributeMap["key"] != tenantIDAttribute {
-						continue
-					}
-					value, _ := attributeMap["value"].(map[string]any)
-					tenantID, _ := value["stringValue"].(string)
-					tenantID = strings.TrimSpace(tenantID)
-					if tenantID != "" {
-						tenantIDs[tenantID] = struct{}{}
-						if len(tenantIDs) > 1 {
-							return multipleTenantIDs
-						}
-					}
-				}
-			}
-		}
-	}
-	return resolveTraceTenantID(tenantIDs)
-}
-
-func addProtobufTenantRouteAttributes(body []byte, destination string) ([]byte, string, error) {
-	var request tracepb.ExportTraceServiceRequest
-	if err := proto.Unmarshal(body, &request); err != nil {
-		return nil, unknownTenantID, err
-	}
-	tenantID := protobufTraceTenantID(&request)
 
 	for _, resourceSpan := range request.ResourceSpans {
 		for _, scopeSpan := range resourceSpan.ScopeSpans {
@@ -903,8 +785,7 @@ func addProtobufTenantRouteAttributes(body []byte, destination string) ([]byte, 
 		}
 	}
 
-	updatedBody, err := proto.Marshal(&request)
-	return updatedBody, tenantID, err
+	return proto.Marshal(&request)
 }
 
 func upsertSpanStringAttribute(span *tracev1.Span, key string, value string) {
@@ -926,12 +807,11 @@ func stringAnyValue(value string) *commonv1.AnyValue {
 	}
 }
 
-func addJSONTenantRouteAttributes(body []byte, destination string) ([]byte, string, error) {
+func addJSONTenantRouteAttributes(body []byte, destination string) ([]byte, error) {
 	var request map[string]any
 	if err := json.Unmarshal(body, &request); err != nil {
-		return nil, unknownTenantID, err
+		return nil, err
 	}
-	tenantID := jsonTraceTenantID(request)
 	resourceSpans, _ := request["resourceSpans"].([]any)
 	for _, resourceSpan := range resourceSpans {
 		resourceSpanMap, _ := resourceSpan.(map[string]any)
@@ -946,8 +826,7 @@ func addJSONTenantRouteAttributes(body []byte, destination string) ([]byte, stri
 			}
 		}
 	}
-	updatedBody, err := json.Marshal(request)
-	return updatedBody, tenantID, err
+	return json.Marshal(request)
 }
 
 func upsertJSONSpanStringAttribute(span map[string]any, key string, value string) {
@@ -1262,17 +1141,6 @@ func isGCSUploadURL(value string) bool {
 	return host == "storage.googleapis.com" || strings.HasSuffix(host, ".storage.googleapis.com")
 }
 
-func validateMediaUploadURL(value string) error {
-	parsed, err := url.Parse(value)
-	if err != nil || parsed.Hostname() == "" {
-		return errors.New("media upload URL must be an absolute HTTPS URL")
-	}
-	if parsed.Scheme != "https" {
-		return errors.New("media upload URL must use HTTPS")
-	}
-	return nil
-}
-
 func isAzureUploadURL(value string) bool {
 	parsed, err := url.Parse(value)
 	if err != nil {
@@ -1284,20 +1152,9 @@ func isAzureUploadURL(value string) bool {
 
 func allowedUploadContentType(value string) bool {
 	mediaType := strings.ToLower(strings.TrimSpace(strings.Split(value, ";")[0]))
-	switch mediaType {
-	case "text/plain", "text/html", "text/css", "text/csv", "text/markdown",
-		"text/x-python", "text/x-typescript", "application/javascript", "application/x-yaml",
-		"application/pdf", "application/msword", "application/rtf",
-		"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-		"application/vnd.ms-excel",
-		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-		"application/vnd.openxmlformats-officedocument.presentationml.presentation",
-		"application/json", "application/x-ndjson", "application/xml",
-		"application/vnd.apache.parquet", "application/zip", "application/gzip",
-		"application/x-tar", "application/x-7z-compressed", "application/octet-stream":
-		return true
-	}
-	return strings.HasPrefix(mediaType, "image/") ||
+	return mediaType == "application/octet-stream" ||
+		mediaType == "application/pdf" ||
+		strings.HasPrefix(mediaType, "image/") ||
 		strings.HasPrefix(mediaType, "audio/") ||
 		strings.HasPrefix(mediaType, "video/")
 }

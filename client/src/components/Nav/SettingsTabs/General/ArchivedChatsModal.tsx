@@ -18,9 +18,7 @@ export function ArchivedChatsModal({
 
   /** The virtualized table has no stable focusable on mount, so Radix's default
    *  autofocus lands on a row that the virtualizer tears out, dropping focus to
-   *  the page's top focus guard; anchor focus to the dialog content instead.
-   *  The container is only a landing spot for focus, never a tab stop, so it
-   *  draws no focus ring of its own; the first Tab reveals one on a real control. */
+   *  the page's top focus guard; anchor focus to the dialog content instead. */
   const handleOpenAutoFocus = (event: Event) => {
     event.preventDefault();
     contentRef.current?.focus();
@@ -32,12 +30,13 @@ export function ArchivedChatsModal({
         ref={contentRef}
         tabIndex={-1}
         onOpenAutoFocus={handleOpenAutoFocus}
-        className="w-11/12 max-w-3xl shadow-2xl focus:outline-none"
+        title={localize('com_nav_archived_chats')}
+        className="w-11/12 max-w-[1000px] bg-background text-text-primary shadow-2xl focus:outline-none"
       >
         <OGDialogHeader>
           <OGDialogTitle>{localize('com_nav_archived_chats')}</OGDialogTitle>
         </OGDialogHeader>
-        <ArchivedChatsTable />
+        <ArchivedChatsTable onOpenChange={onOpenChange} />
       </OGDialogContent>
     </OGDialog>
   );

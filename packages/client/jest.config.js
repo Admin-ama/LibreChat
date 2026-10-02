@@ -1,5 +1,3 @@
-import { maxWorkers } from '../../config/jest.workers.cjs';
-
 export default {
   collectCoverageFrom: ['src/**/*.{js,jsx,ts,tsx}', '!<rootDir>/node_modules/'],
   coveragePathIgnorePatterns: ['/node_modules/', '/dist/'],
@@ -18,7 +16,7 @@ export default {
   //     lines: 57,
   //   },
   // },
-  maxWorkers,
+  maxWorkers: '50%',
   restoreMocks: true,
   testTimeout: 15000,
   // React component testing requires jsdom environment
@@ -29,7 +27,7 @@ export default {
     '^.+\\.(ts|tsx|js|jsx)$': 'babel-jest',
   },
   transformIgnorePatterns: [
-    'node_modules/(?!(@tanstack|lucide-react|lucide|morphicons|@dicebear|@ariakit/react-components|@ariakit/react-utils|@ariakit/react-store|@ariakit/components|@ariakit/store|@ariakit/utils)/)',
+    'node_modules/(?!(@tanstack|lucide-react|@dicebear|@ariakit/react-components|@ariakit/react-utils|@ariakit/react-store|@ariakit/components|@ariakit/store|@ariakit/utils)/)',
   ],
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
 };

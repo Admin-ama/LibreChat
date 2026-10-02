@@ -1,9 +1,9 @@
 import { useMemo } from 'react';
-import { presetSettings, getSettingsKeys, applyModelAwareDefaults } from 'librechat-data-provider';
+import { getSettingsKeys } from 'librechat-data-provider';
 import type { SettingDefinition } from 'librechat-data-provider';
 import type { TModelSelectProps } from '~/common';
 import { componentMapping } from '~/components/SidePanel/Parameters/components';
-import { useGetEndpointsQuery } from '~/data-provider';
+import { presetSettings } from 'librechat-data-provider';
 
 export default function OpenAISettings({
   conversation,
@@ -11,31 +11,13 @@ export default function OpenAISettings({
   models,
   readonly,
 }: TModelSelectProps) {
-  const { data: endpointsConfig } = useGetEndpointsQuery();
   const parameters = useMemo(() => {
     const [combinedKey, endpointKey] = getSettingsKeys(
       conversation?.endpointType ?? conversation?.endpoint ?? '',
       conversation?.model ?? '',
     );
-    const settings = presetSettings[combinedKey] ?? presetSettings[endpointKey];
-    if (!settings) {
-      return undefined;
-    }
-    return {
-      col1: applyModelAwareDefaults(
-        settings.col1,
-        endpointKey,
-        conversation?.model ?? undefined,
-        endpointsConfig?.[conversation?.endpoint ?? '']?.responsesApiRouting,
-      ),
-      col2: applyModelAwareDefaults(
-        settings.col2,
-        endpointKey,
-        conversation?.model ?? undefined,
-        endpointsConfig?.[conversation?.endpoint ?? '']?.responsesApiRouting,
-      ),
-    };
-  }, [conversation, endpointsConfig]);
+    return presetSettings[combinedKey] ?? presetSettings[endpointKey];
+  }, [conversation]);
 
   if (!parameters) {
     return null;
@@ -52,6 +34,7 @@ export default function OpenAISettings({
     const { key, default: defaultValue, ...rest } = setting;
 
     const props = {
+      key,
       settingKey: key,
       defaultValue,
       ...rest,
@@ -61,10 +44,10 @@ export default function OpenAISettings({
     };
 
     if (key === 'model') {
-      return <Component key={key} {...props} options={models} />;
+      return <Component {...props} options={models} />;
     }
 
-    return <Component key={key} {...props} />;
+    return <Component {...props} />;
   };
 
   return (

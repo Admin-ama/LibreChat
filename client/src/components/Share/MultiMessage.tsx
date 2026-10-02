@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
-import { useAtom } from 'jotai';
+import { useRecoilState } from 'recoil';
 import type { TMessage } from 'librechat-data-provider';
 import type { TMessageProps } from '~/common';
 
-import { siblingIdxFamily, siblingKey } from '~/components/Chat/Messages/Thread/state';
 import Message from './Message';
+import store from '~/store';
 
 export default function MultiMessage({
   // messageId is used recursively here
@@ -13,7 +13,7 @@ export default function MultiMessage({
   currentEditId,
   setCurrentEditId,
 }: TMessageProps) {
-  const [siblingIdx, setSiblingIdx] = useAtom(siblingIdxFamily(siblingKey(messageId)));
+  const [siblingIdx, setSiblingIdx] = useRecoilState(store.messagesSiblingIdxFamily(messageId));
 
   const setSiblingIdxRev = (value: number) => {
     setSiblingIdx((messagesTree?.length ?? 0) - value - 1);

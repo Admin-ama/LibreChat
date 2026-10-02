@@ -5,15 +5,10 @@ export enum QueryKeys {
   sharedLinks = 'sharedLinks',
   allConversations = 'allConversations',
   archivedConversations = 'archivedConversations',
-  pinnedConversations = 'pinnedConversations',
   searchConversations = 'searchConversations',
   conversation = 'conversation',
   searchEnabled = 'searchEnabled',
   langfuseConnection = 'langfuseConnection',
-  langfuseSessionLink = 'langfuseSessionLink',
-  conversationTraceAvailability = 'conversationTraceAvailability',
-  conversationTraceRecords = 'conversationTraceRecords',
-  conversationTraceRecord = 'conversationTraceRecord',
   user = 'user',
   name = 'name', // user key name
   models = 'models',
@@ -25,8 +20,6 @@ export enum QueryKeys {
   tokenCount = 'tokenCount',
   availablePlugins = 'availablePlugins',
   startupConfig = 'startupConfig',
-  insights = 'insights',
-  insightsAccess = 'insightsAccess',
   assistants = 'assistants',
   assistant = 'assistant',
   agents = 'agents',
@@ -61,6 +54,8 @@ export enum QueryKeys {
   marketplaceAgents = 'marketplaceAgents',
   roles = 'roles',
   rolesList = 'rolesList',
+  adminUsers = 'adminUsers',
+  adminUserBalance = 'adminUserBalance',
   conversationTags = 'conversationTags',
   health = 'health',
   userTerms = 'userTerms',
@@ -93,34 +88,14 @@ export enum QueryKeys {
   skillStates = 'skillStates',
   /* General user favorites */
   favorites = 'favorites',
-  /* Scheduled chats */
-  schedules = 'schedules',
-  schedule = 'schedule',
-  parentSubagents = 'parentSubagents',
-  subagentThread = 'subagentThread',
-  backgroundTasks = 'backgroundTasks',
-  codeEnvironments = 'codeEnvironments',
-  agentQueuedTurns = 'agentQueuedTurns',
-  /* Combined Pinned-section display order (favorites + pinned chats) */
-  pinnedOrder = 'pinnedOrder',
 }
 
 // Dynamic query keys that require parameters
 export const DynamicQueryKeys = {
   agentFiles: (agentId: string) => ['agentFiles', agentId] as const,
-  codeEnvironmentStatus: (id: string) => [QueryKeys.codeEnvironments, id, 'status'] as const,
 } as const;
 
 export enum MutationKeys {
-  subagentControl = 'subagentControl',
-  cancelBackgroundTasks = 'cancelBackgroundTasks',
-  enqueueAgentQueuedTurn = 'enqueueAgentQueuedTurn',
-  cancelAgentQueuedTurn = 'cancelAgentQueuedTurn',
-  /** Whole-array favorites write, keyed so every hook instance's write is
-   *  visible to the others through the query client. */
-  updateFavorites = 'updateFavorites',
-  /** Pinned-section display order write, keyed for the same reason. */
-  updatePinnedOrder = 'updatePinnedOrder',
   updateLangfuseConnection = 'updateLangfuseConnection',
   testLangfuseConnection = 'testLangfuseConnection',
   createAgentApiKey = 'createAgentApiKey',
@@ -144,8 +119,8 @@ export enum MutationKeys {
   deleteAgentAction = 'deleteAgentAction',
   revertAgentVersion = 'revertAgentVersion',
   deleteUser = 'deleteUser',
-  updateUserPreferences = 'updateUserPreferences',
   updateRole = 'updateRole',
+  updateAdminUserBalance = 'updateAdminUserBalance',
   enableTwoFactor = 'enableTwoFactor',
   verifyTwoFactor = 'verifyTwoFactor',
   updateMemoryPreferences = 'updateMemoryPreferences',
@@ -160,13 +135,4 @@ export enum MutationKeys {
   deleteSkillNode = 'deleteSkillNode',
   updateSkillNodeContent = 'updateSkillNodeContent',
   convoPin = 'convoPin',
-  archiveAllConversations = 'archiveAllConversations',
-  createSchedule = 'createSchedule',
-  updateSchedule = 'updateSchedule',
-  deleteSchedule = 'deleteSchedule',
-  runSchedule = 'runSchedule',
-  pairCodeEnvironment = 'pairCodeEnvironment',
-  updateCodeEnvironmentSettings = 'updateCodeEnvironmentSettings',
-  deleteCodeEnvironment = 'deleteCodeEnvironment',
-  moveConversationCodeEnvironment = 'moveConversationCodeEnvironment',
 }

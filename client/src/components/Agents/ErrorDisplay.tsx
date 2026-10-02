@@ -181,11 +181,11 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ error, onRetry, cont
           <div
             className={cn(
               'flex h-12 w-12 items-center justify-center rounded-full',
-              'bg-status-error-subtle',
+              'bg-red-100 dark:bg-red-900/20',
             )}
           >
             <svg
-              className="h-6 w-6 text-status-error"
+              className="h-6 w-6 text-red-600 dark:text-red-400"
               fill="none"
               viewBox="0 0 24 24"
               strokeWidth={2}
@@ -205,14 +205,18 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ error, onRetry, cont
 
         {/* Error content with proper headings and structure */}
         <div className="space-y-3">
-          <h3 className="text-lg font-semibold text-text-primary" id="error-title">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white" id="error-title">
             {title}
           </h3>
-          <p className="text-text-secondary" id="error-message" aria-describedby="error-title">
+          <p
+            className="text-gray-600 dark:text-gray-400"
+            id="error-message"
+            aria-describedby="error-title"
+          >
             {message}
           </p>
           <p
-            className="text-sm text-text-tertiary"
+            className="text-sm text-gray-500 dark:text-gray-500"
             id="error-suggestion"
             role="note"
             aria-label={`Suggestion: ${suggestion}`}
@@ -228,7 +232,10 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ error, onRetry, cont
               onClick={onRetry}
               variant="outline"
               size="sm"
-              className={cn('border-status-error text-status-error hover:bg-status-error-subtle')}
+              className={cn(
+                'border-red-300 text-red-700 hover:bg-red-50 focus:ring-2 focus:ring-red-500',
+                'dark:border-red-600 dark:text-red-400 dark:hover:bg-red-900/20 dark:focus:ring-red-400',
+              )}
               aria-describedby="error-message error-suggestion"
               aria-label={`Retry action. ${message}`}
             >

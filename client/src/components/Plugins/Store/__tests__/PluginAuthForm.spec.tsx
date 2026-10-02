@@ -48,7 +48,7 @@ describe('PluginAuthForm', () => {
     expect(urlField.parentElement?.querySelector('button')).toBeNull();
   });
 
-  it('shows a semantic warning for a recognized credential with the wrong format', async () => {
+  it('shows a format-hint placeholder for recognized credential fields', () => {
     const openAiPlugin = {
       pluginKey: 'dalle',
       authConfig: [{ authField: 'DALLE3_API_KEY||DALLE_API_KEY', label: 'OpenAI API Key' }],
@@ -56,12 +56,7 @@ describe('PluginAuthForm', () => {
     //@ts-ignore - dont need all props of plugin
     render(<PluginAuthForm plugin={openAiPlugin} onSubmit={onSubmit} />);
 
-    const input = screen.getByLabelText('OpenAI API Key');
-    expect(input).toHaveAttribute('placeholder', 'sk-...');
-
-    await userEvent.type(input, 'invalid-key');
-
-    expect(document.getElementById('DALLE3_API_KEY-hint')).toHaveClass('text-text-warning');
+    expect(screen.getByLabelText('OpenAI API Key')).toHaveAttribute('placeholder', 'sk-...');
   });
 
   it('calls the onSubmit function with the form data when submitted', async () => {

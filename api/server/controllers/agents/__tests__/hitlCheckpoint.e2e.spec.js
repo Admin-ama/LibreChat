@@ -215,8 +215,7 @@ describe('HITL checkpoint lifecycle (full wiring)', () => {
       initialMetadata: { generationProtocolVersion: 2 },
     });
     const checkpointNamespace = job.metadata.checkpointNamespace;
-    expect(checkpointNamespace).toEqual(expect.any(String));
-    expect(checkpointNamespace).not.toBe(String(job.createdAt));
+    expect(checkpointNamespace).toBe(String(job.createdAt));
 
     // --- Turn 1: the model calls the gated tool → PreToolUse 'ask' → interrupt. ---
     const run = await buildHitlRun({

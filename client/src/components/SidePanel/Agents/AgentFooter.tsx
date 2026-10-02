@@ -1,5 +1,5 @@
 import { Globe } from 'lucide-react';
-import { Button, Spinner } from '@librechat/client';
+import { Spinner } from '@librechat/client';
 import { useWatch, useFormContext } from 'react-hook-form';
 import {
   SystemRoles,
@@ -60,7 +60,6 @@ export default function AgentFooter({
   const canEditThisAgent = hasPermission(PermissionBits.EDIT);
   const canDeleteThisAgent = hasPermission(PermissionBits.DELETE);
   const canShareRemoteAgent = hasRemoteAgentPermission(PermissionBits.SHARE);
-  const isAdmin = user?.role === SystemRoles.ADMIN;
   const isSaving = createMutation.isLoading || updateMutation.isLoading || isAvatarUploading;
   const saveLabel = agent_id ? localize('com_ui_save') : localize('com_ui_create');
   const renderSaveButton = () => (
@@ -95,8 +94,8 @@ export default function AgentFooter({
               createMutation={createMutation}
             />
           )}
-        {(agent?.author === user?.id || isAdmin || canShareThisAgent) &&
-          (hasAccessToShareAgents || isAdmin) &&
+        {(agent?.author === user?.id || user?.role === SystemRoles.ADMIN || canShareThisAgent) &&
+          hasAccessToShareAgents &&
           !permissionsLoading && (
             <GenericGrantAccessDialog
               resourceDbId={agent?._id}
@@ -115,30 +114,27 @@ export default function AgentFooter({
               resourceName={agent?.name ?? ''}
               resourceType={ResourceType.REMOTE_AGENT}
             >
-              <Button
+              <button
                 type="button"
-                variant="outline"
-                aria-label={localize('com_ui_remote_access')}
+                className="btn btn-neutral border-token-border-light h-9 px-3"
                 title={localize('com_ui_remote_access')}
-                className="h-9 w-auto px-3"
               >
                 <Globe className="h-4 w-4" aria-hidden="true" />
-              </Button>
+              </button>
             </GenericGrantAccessDialog>
           )}
         {(agent?.author === user?.id || user?.role === SystemRoles.ADMIN || canEditThisAgent) &&
           !permissionsLoading && <DuplicateAgent agent_id={agent_id} />}
         {/* Submit Button */}
-        <Button
-          variant="submit"
-          className="h-9 w-full px-4 py-2 font-semibold"
+        <button
+          className="btn btn-primary focus:shadow-outline flex h-9 w-full items-center justify-center px-4 py-2 font-semibold text-white hover:bg-green-600 focus:border-green-500"
           type="submit"
           disabled={isSaving}
           aria-busy={isSaving}
           aria-label={saveLabel}
         >
           {renderSaveButton()}
-        </Button>
+        </button>
       </div>
     </div>
   );

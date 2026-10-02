@@ -3,7 +3,6 @@ export {
   buildPrompt,
   classifyBatch,
   createActivityLabelHook,
-  stringifyActivityEvidence,
 } from './runtime';
 export type {
   ActivityLabelBatchMeta,
@@ -24,18 +23,12 @@ export type { ActivityLabelHostDeps, LooseContentPart } from './wiring';
 export {
   mapCollectedMetadataToUsage,
   resolveActivityConfig,
-  resolveActivityPhaseConfig,
-  resolveReasoningLabelConfig,
   resolveActivityLabelModel,
-  resolveActivityPhaseLabelModel,
-  resolveReasoningLabelModel,
   settlePendingLabelFills,
 } from './host';
 export type {
   ActivityLabelAgent,
   ResolvedActivityConfig,
-  ResolvedActivityPhaseConfig,
-  ResolvedReasoningLabelConfig,
   ActivityLabelUsage,
   CollectedMetadataEntry,
   ResolveActivityLabelModelParams,

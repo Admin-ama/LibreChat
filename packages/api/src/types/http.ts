@@ -1,11 +1,5 @@
-import type {
-  CodeApprovalMode,
-  CodeEnvironmentMode,
-  CodeWorkspaceSelection,
-  TEndpointOption,
-  Agents,
-} from 'librechat-data-provider';
-import type { IUser, AppConfig, IConversation } from '@librechat/data-schemas';
+import type { TConversation, TEndpointOption } from 'librechat-data-provider';
+import type { IUser, AppConfig } from '@librechat/data-schemas';
 import type { Request } from 'express';
 
 /**
@@ -20,26 +14,19 @@ export type RequestBody = {
   endpoint?: string;
   endpointType?: string;
   model?: string;
-  imageDetail?: Agents.ImageDetail;
   key?: string;
   endpointOption?: Partial<TEndpointOption>;
   /** Browser IANA timezone used to resolve local-time prompt variables (e.g. `{{current_datetime}}`). */
   timezone?: string;
-  codeApprovalMode?: CodeApprovalMode;
-  codeEnvironmentMode?: CodeEnvironmentMode;
-  codeWorkspaces?: CodeWorkspaceSelection[];
 };
 
 export type ServerRequest = Request<unknown, unknown, RequestBody> & {
   user?: IUser;
   config?: AppConfig;
-  /** Server-captured generation start time used to anchor dynamic prompt variables. */
-  turnStartedAt?: number;
-  /** Server-captured conversation creation time used when inserting conversation metadata. */
+  /** Server-captured conversation creation time used to anchor dynamic prompt variables. */
   conversationCreatedAt?: string;
-  /** Conversation read by request middleware (`null` = looked up, absent), reused by the
-   *  subagent guard, agent initialization, and the first save instead of re-reading it. */
-  resolvedConversation?: Partial<IConversation> | null;
+  /** Conversation loaded while resolving the prompt timestamp anchor, reused by save logic. */
+  resolvedConversation?: Partial<TConversation> | null;
   /** Passport strategy that populated req.user for this request. */
   authStrategy?: string;
 };

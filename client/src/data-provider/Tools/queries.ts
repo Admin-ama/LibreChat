@@ -48,12 +48,10 @@ export const useMCPConnectionStatusQuery = (
     [QueryKeys.mcpConnectionStatus],
     () => dataService.getMCPConnectionStatus(),
     {
-      refetchOnWindowFocus: true,
-      refetchOnReconnect: true,
-      refetchOnMount: true,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      refetchOnMount: false,
       staleTime: 10000, // 10 seconds
-      refetchInterval: false,
-      refetchIntervalInBackground: false,
       ...config,
     },
   );

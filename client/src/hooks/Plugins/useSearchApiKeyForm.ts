@@ -1,7 +1,7 @@
 import { useRef, useState, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
-import type { SearchApiKeyFormData } from '~/hooks/Plugins/useAuthSearchTool';
 import useAuthSearchTool from '~/hooks/Plugins/useAuthSearchTool';
+import type { SearchApiKeyFormData } from '~/hooks/Plugins/useAuthSearchTool';
 
 export default function useSearchApiKeyForm({
   onSubmit,
@@ -15,18 +15,15 @@ export default function useSearchApiKeyForm({
   const badgeTriggerRef = useRef<HTMLInputElement>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const { installTool, removeTool } = useAuthSearchTool({ isEntityTool: true });
-  const {
-    reset,
-    formState: { dirtyFields },
-  } = methods;
+  const { reset } = methods;
 
   const onSubmitHandler = useCallback(
     (data: SearchApiKeyFormData) => {
-      installTool(data, dirtyFields);
+      installTool(data);
       setIsDialogOpen(false);
       onSubmit?.();
     },
-    [dirtyFields, onSubmit, installTool],
+    [onSubmit, installTool],
   );
 
   const handleRevokeApiKey = useCallback(() => {

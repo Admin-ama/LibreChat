@@ -12,8 +12,6 @@ export interface FlowState<T = unknown> {
   createdAt: number;
   result?: T;
   error?: string;
-  /** Additive wire field; older flow records retain the default Error name. */
-  errorName?: string;
   completedAt?: number;
   failedAt?: number;
 }
@@ -26,8 +24,4 @@ export interface FlowManagerOptions {
   retainedFailureTypes?: readonly string[];
   ci?: boolean;
   logger?: Logger;
-  redisScriptExecutor?: (
-    script: string,
-    options: { keys: string[]; arguments: string[] },
-  ) => Promise<unknown>;
 }

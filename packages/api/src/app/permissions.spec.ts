@@ -118,10 +118,6 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.SHARE]: true,
         [Permissions.SHARE_PUBLIC]: true,
       },
-      [PermissionTypes.SCHEDULES]: {
-        [Permissions.USE]: true,
-        [Permissions.CREATE]: true,
-      },
     };
 
     const expectedPermissionsForAdmin = {
@@ -180,10 +176,6 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.CREATE]: true,
         [Permissions.SHARE]: true,
         [Permissions.SHARE_PUBLIC]: true,
-      },
-      [PermissionTypes.SCHEDULES]: {
-        [Permissions.USE]: true,
-        [Permissions.CREATE]: true,
       },
     };
 
@@ -308,10 +300,6 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.SHARE]: true,
         [Permissions.SHARE_PUBLIC]: true,
       },
-      [PermissionTypes.SCHEDULES]: {
-        [Permissions.USE]: true,
-        [Permissions.CREATE]: true,
-      },
     };
 
     const expectedPermissionsForAdmin = {
@@ -370,10 +358,6 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.CREATE]: true,
         [Permissions.SHARE]: true,
         [Permissions.SHARE_PUBLIC]: true,
-      },
-      [PermissionTypes.SCHEDULES]: {
-        [Permissions.USE]: true,
-        [Permissions.CREATE]: true,
       },
     };
 
@@ -484,10 +468,6 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.SHARE]: true,
         [Permissions.SHARE_PUBLIC]: true,
       },
-      [PermissionTypes.SCHEDULES]: {
-        [Permissions.USE]: true,
-        [Permissions.CREATE]: true,
-      },
     };
 
     const expectedPermissionsForAdmin = {
@@ -546,10 +526,6 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.CREATE]: true,
         [Permissions.SHARE]: true,
         [Permissions.SHARE_PUBLIC]: true,
-      },
-      [PermissionTypes.SCHEDULES]: {
-        [Permissions.USE]: true,
-        [Permissions.CREATE]: true,
       },
     };
 
@@ -673,10 +649,6 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.SHARE]: true,
         [Permissions.SHARE_PUBLIC]: true,
       },
-      [PermissionTypes.SCHEDULES]: {
-        [Permissions.USE]: true,
-        [Permissions.CREATE]: true,
-      },
     };
 
     const expectedPermissionsForAdmin = {
@@ -735,10 +707,6 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.CREATE]: true,
         [Permissions.SHARE]: true,
         [Permissions.SHARE_PUBLIC]: true,
-      },
-      [PermissionTypes.SCHEDULES]: {
-        [Permissions.USE]: true,
-        [Permissions.CREATE]: true,
       },
     };
 
@@ -849,10 +817,6 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.SHARE]: true,
         [Permissions.SHARE_PUBLIC]: true,
       },
-      [PermissionTypes.SCHEDULES]: {
-        [Permissions.USE]: true,
-        [Permissions.CREATE]: true,
-      },
     };
 
     const expectedPermissionsForAdmin = {
@@ -911,10 +875,6 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.CREATE]: true,
         [Permissions.SHARE]: true,
         [Permissions.SHARE_PUBLIC]: true,
-      },
-      [PermissionTypes.SCHEDULES]: {
-        [Permissions.USE]: true,
-        [Permissions.CREATE]: true,
       },
     };
 
@@ -1030,10 +990,6 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.SHARE]: true,
         [Permissions.SHARE_PUBLIC]: true,
       },
-      [PermissionTypes.SCHEDULES]: {
-        [Permissions.USE]: true,
-        [Permissions.CREATE]: true,
-      },
     };
 
     const expectedPermissionsForAdmin = {
@@ -1080,10 +1036,6 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.CREATE]: true,
         [Permissions.SHARE]: true,
         [Permissions.SHARE_PUBLIC]: true,
-      },
-      [PermissionTypes.SCHEDULES]: {
-        [Permissions.USE]: true,
-        [Permissions.CREATE]: true,
       },
     };
 
@@ -1216,10 +1168,6 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.SHARE]: true,
         [Permissions.SHARE_PUBLIC]: true,
       },
-      [PermissionTypes.SCHEDULES]: {
-        [Permissions.USE]: true,
-        [Permissions.CREATE]: true,
-      },
     };
 
     const expectedPermissionsForAdmin = {
@@ -1270,10 +1218,6 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.CREATE]: true,
         [Permissions.SHARE]: true,
         [Permissions.SHARE_PUBLIC]: true,
-      },
-      [PermissionTypes.SCHEDULES]: {
-        [Permissions.USE]: true,
-        [Permissions.CREATE]: true,
       },
     };
 
@@ -2833,10 +2777,6 @@ describe('updateInterfacePermissions - permissions', () => {
           [Permissions.SHARE]: true,
           [Permissions.SHARE_PUBLIC]: true,
         },
-        [PermissionTypes.SCHEDULES]: {
-          [Permissions.USE]: true,
-          [Permissions.CREATE]: true,
-        },
       },
     });
 
@@ -2874,10 +2814,6 @@ describe('updateInterfacePermissions - permissions', () => {
           [Permissions.SHARE]: false,
           [Permissions.SHARE_PUBLIC]: false,
         },
-        [PermissionTypes.SCHEDULES]: {
-          [Permissions.USE]: true,
-          [Permissions.CREATE]: true,
-        },
       },
     });
 
@@ -2905,67 +2841,5 @@ describe('updateInterfacePermissions - permissions', () => {
       [Permissions.SHARE]: true,
       [Permissions.SHARE_PUBLIC]: true,
     });
-  });
-
-  it('does not re-enable a DB-disabled schedules permission when only runtime limits are configured', async () => {
-    // The role already has schedules USE disabled in the DB.
-    mockGetRoleByName.mockResolvedValue({
-      permissions: {
-        [PermissionTypes.SCHEDULES]: { [Permissions.USE]: false, [Permissions.CREATE]: false },
-      },
-    });
-    // Runtime-only limits — NOT a permission config; must not re-derive USE.
-    const config = {
-      interface: {
-        schedules: { maxPerUser: 20, fireConcurrency: 2 },
-      },
-    };
-    const configDefaults = { interface: {} } as TConfigDefaults;
-    const interfaceConfig = await loadDefaultInterface({ config, configDefaults });
-    const appConfig = { config, interfaceConfig } as unknown as AppConfig;
-
-    await updateInterfacePermissions({
-      appConfig,
-      getRoleByName: mockGetRoleByName,
-      updateAccessPermissions: mockUpdateAccessPermissions,
-    });
-
-    // Schedules must be preserved (omitted from every role update), not silently
-    // re-enabled to USE:true from defaults just because limits were tuned.
-    for (const call of mockUpdateAccessPermissions.mock.calls) {
-      expect(call[1][PermissionTypes.SCHEDULES]).toBeUndefined();
-    }
-  });
-
-  it('treats a boolean schedules kill switch as runtime-only (does not touch the permission)', async () => {
-    // The role currently has schedules enabled.
-    mockGetRoleByName.mockResolvedValue({
-      permissions: {
-        [PermissionTypes.SCHEDULES]: { [Permissions.USE]: true, [Permissions.CREATE]: true },
-      },
-    });
-    // `schedules: false` is the RUNTIME kill switch read by getLimits, NOT a permission
-    // config: it must not write SCHEDULES into the role docs, so removing it later can
-    // never leave USE stuck false (forbidden) until manual repair.
-    const config = {
-      interface: {
-        schedules: false,
-      },
-    };
-    const configDefaults = { interface: {} } as TConfigDefaults;
-    const interfaceConfig = await loadDefaultInterface({ config, configDefaults });
-    const appConfig = { config, interfaceConfig } as unknown as AppConfig;
-
-    await updateInterfacePermissions({
-      appConfig,
-      getRoleByName: mockGetRoleByName,
-      updateAccessPermissions: mockUpdateAccessPermissions,
-    });
-
-    // The kill switch is runtime-only: SCHEDULES is omitted from every role update,
-    // leaving the existing USE:true untouched.
-    for (const call of mockUpdateAccessPermissions.mock.calls) {
-      expect(call[1][PermissionTypes.SCHEDULES]).toBeUndefined();
-    }
   });
 });

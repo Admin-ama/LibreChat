@@ -94,10 +94,11 @@ describe('DataTableSearch', () => {
     render(<DataTableSearch value="" onChange={jest.fn()} />);
 
     const input = screen.getByTestId('search-input');
+    expect(input).toHaveAttribute('aria-describedby', 'search-description');
 
     // Description should be present
     const description = screen.getByText('com_ui_search_table_description');
-    expect(input).toHaveAttribute('aria-describedby', description.id);
+    expect(description).toHaveAttribute('id', 'search-description');
     expect(description).toHaveClass('sr-only');
   });
 
@@ -126,12 +127,8 @@ describe('DataTableSearch', () => {
     render(<DataTableSearch value="" onChange={jest.fn()} />);
 
     const input = screen.getByTestId('search-input');
-    expect(input.className).toContain('h-11');
-    /* The field sits flush inside the table's toolbar, so it carries no chrome of
-       its own and leaves room for the leading search icon. */
-    expect(input.className).toContain('bg-transparent');
-    expect(input.className).toContain('border-0');
-    expect(input.className).toContain('pl-9');
+    expect(input.className).toContain('h-10');
+    expect(input.className).toContain('bg-surface-secondary');
   });
 
   it('should have correct id for label association', () => {
@@ -140,8 +137,8 @@ describe('DataTableSearch', () => {
     const input = screen.getByTestId('search-input');
     const label = screen.getByText('com_ui_search_table');
 
-    expect(input.id).not.toBe('');
-    expect(label).toHaveAttribute('for', input.id);
+    expect(input).toHaveAttribute('id', 'table-search');
+    expect(label).toHaveAttribute('for', 'table-search');
   });
 
   it('should handle empty string onChange', () => {

@@ -1,7 +1,6 @@
 /* eslint-disable */
 import * as React from 'react';
 import TextareaAutosize from 'react-textarea-autosize';
-import { fieldBase } from './Field';
 import { cn } from '~/utils';
 import './Field.css';
 
@@ -12,7 +11,10 @@ const Textarea: React.ForwardRefExoticComponent<
 > = React.forwardRef<HTMLTextAreaElement, TextareaProps>(({ className = '', ...props }, ref) => {
   return (
     <textarea
-      className={cn(fieldBase, 'min-h-20 resize-none bg-surface-secondary', className)}
+      className={cn(
+        'lc-field flex min-h-20 w-full resize-none rounded-lg border border-border-light bg-surface-secondary px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus-visible:border-border-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary disabled:cursor-not-allowed disabled:opacity-50',
+        className,
+      )}
       ref={ref}
       {...props}
     />

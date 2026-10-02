@@ -45,19 +45,17 @@ The deployment is a hybrid:
   trace suppression uses a destination-scoped gateway path that also skips
   central media export for that run.
 - Tenant export is conditional. LibreChat uses a destination-scoped gateway URL
-  only when the saved connection is enabled with tenant keys, its destination
-  key matches a configured startup destination, and
-  `LANGFUSE_FANOUT_TENANT_EXPORT_DISABLED` is not true.
+  only when tenant keys are configured, the tenant base URL matches a configured
+  startup destination, and `LANGFUSE_FANOUT_TENANT_EXPORT_DISABLED` is not true.
   Other traces are still exported to central through the gateway without tenant
   auth.
 - User feedback scores use Langfuse's direct REST API from the LibreChat API
   process. Central scores use LibreChat's normal central Langfuse env config;
   tenant scores use tenant app configuration when tenant fanout is enabled.
 
-Tenant Langfuse keys are expected to come from LibreChat app configuration.
-When available, an authorized administrator can configure and verify the
-connection under **Settings > Langfuse**; LibreChat encrypts the secret key at
-rest. The keys are not defined in this gateway config.
+Tenant Langfuse keys are expected to come from LibreChat app configuration, for
+example from an admin panel or another configuration data source. They are not
+defined in this gateway config.
 
 ## Limitations
 
@@ -67,9 +65,9 @@ rest. The keys are not defined in this gateway config.
   destination.
 - Tenant Langfuse API keys can be added, changed, or disabled in tenant app
   configuration at runtime without restarting LibreChat or the gateway.
-- Tenant app configuration must select a destination key from
-  `LANGFUSE_FANOUT_TENANT_DESTINATIONS` before tenant trace/score export is
-  enabled; keys alone do not enable tenant export.
+- Tenant app configuration must set a Langfuse base URL matching one of the
+  startup destinations before tenant trace/score export is enabled; keys alone
+  are treated as central-only.
 - `LANGFUSE_FANOUT_TENANT_EXPORT_DISABLED=true` can be set on LibreChat as an
   emergency switch to stop tenant trace and score export while keeping central
   gateway export active. When omitted, false, or blank, tenant export remains
@@ -131,7 +129,6 @@ LANGFUSE_FANOUT_TENANT_EU_BASE_URL=https://cloud.langfuse.com
 LANGFUSE_FANOUT_TENANT_US_BASE_URL=https://us.cloud.langfuse.com
 LANGFUSE_FANOUT_TENANT_JP_BASE_URL=https://jp.cloud.langfuse.com
 LANGFUSE_FANOUT_TENANT_EXPORT_DISABLED=false
-LANGFUSE_FANOUT_LISTEN_ADDR=:4318
 LANGFUSE_FANOUT_UPSTREAM_TIMEOUT=30s
 LANGFUSE_FANOUT_PUBLIC_URL=http://langfuse-fanout-collector:4318
 LANGFUSE_FANOUT_REDIS_URI=redis://langfuse-fanout-redis:6379
@@ -173,17 +170,6 @@ The override builds the fanout gateway image, sets `LANGFUSE_FANOUT_ENABLED=true
 
 ## Helm
 
-The Compose overrides build the gateway image locally. For Kubernetes, build
-the same image from the repository root, push it to a registry available to
-the cluster, and set `langfuseFanout.image.repository` and `.tag` to match:
-
-```sh
-docker build \
-  -f otel/langfuse-fanout/Dockerfile \
-  -t registry.example.com/librechat-langfuse-fanout:<tag> .
-docker push registry.example.com/librechat-langfuse-fanout:<tag>
-```
-
 Create a secret containing the central Langfuse Basic auth header:
 
 ```sh
@@ -200,10 +186,6 @@ redis:
 
 langfuseFanout:
   enabled: true
-  image:
-    repository: registry.example.com/librechat-langfuse-fanout
-    tag: '<tag>'
-    pullPolicy: IfNotPresent
   central:
     baseUrl: https://cloud.langfuse.com
     authHeaderSecret:
@@ -222,14 +204,14 @@ langfuseFanout:
       jp:
         baseUrl: https://jp.cloud.langfuse.com
   upstreamTimeout: 30s
-  publicUrl: ''
+  publicUrl: ""
   otelCollector:
     receiverEndpoint: 127.0.0.1:4319
   redis:
-    uri: ''
-    username: ''
+    uri: ""
+    username: ""
     passwordSecret:
-      name: ''
+      name: ""
       key: REDIS_PASSWORD
     keyPrefix: langfuse-fanout
   memoryLimitMiB: 256
@@ -260,27 +242,13 @@ Useful gateway metrics include:
 
 - `langfuse_fanout_http_requests_total`
 - `langfuse_fanout_upstream_requests_total`
-- `langfuse_fanout_trace_exports_total` (`destination`, `result`, and `tenant_id` labels)
+- `langfuse_fanout_trace_exports_total`
 - `langfuse_fanout_media_upload_plans_created_total`
 - `langfuse_fanout_media_upload_plans_completed_total`
 - `langfuse_fanout_media_upload_plan_misses_total`
 - `langfuse_fanout_media_upload_plan_store_errors_total`
 - `langfuse_fanout_media_upload_bytes`
 - `langfuse_fanout_media_divergence_total`
-
-LibreChat stamps `librechat.tenant.id`, `librechat.langfuse.export_plan`, and
-`librechat.langfuse.export_reason` on Langfuse run spans. The gateway reads the
-tenant ID from each OTLP batch for the trace export counter. Batches without a
-tenant ID use `<unknown>`; batches containing more than one tenant use `<multiple>`.
-Invalid tenant IDs use `<invalid>`. The gateway retains up to 1,000 valid tenant
-labels and aggregates additional IDs under `<overflow>`, bounding the trace
-counter's cardinality. Angle brackets keep these synthetic values outside
-LibreChat's accepted tenant-ID grammar.
-
-Successful admin connection updates emit the structured log event
-`librechat.langfuse.connection.changed`. It includes the tenant, configuration
-state, destination, verification result, a primary `change`, and all `changes`.
-It does not include the Langfuse public or secret key.
 
 `langfuse_fanout_media_divergence_total{kind="media_id"}` is the correctness
 signal for trace/media token fanout. `kind="upload_url_presence"` records that
@@ -300,8 +268,6 @@ already uploaded.
 - Tenant destinations default to the three configured Langfuse Cloud regions. Add or
   override `langfuseFanout.tenant.destinations` in Helm for self-hosted or
   custom destinations.
-- `LANGFUSE_FANOUT_LISTEN_ADDR` controls the gateway HTTP bind address and
-  defaults to `:4318`.
 - `LANGFUSE_FANOUT_UPSTREAM_TIMEOUT` tunes the timeout for gateway calls to
   Langfuse APIs and presigned media upload URLs.
 - `LANGFUSE_FANOUT_PUBLIC_URL` pins the base URL returned for the SDK's

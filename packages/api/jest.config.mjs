@@ -1,5 +1,3 @@
-import { maxWorkers } from '../../config/jest.workers.cjs';
-
 const esModules = [
   '@langchain/langgraph',
   '@langchain/langgraph-checkpoint',
@@ -53,8 +51,8 @@ export default {
   //     lines: 57,
   //   },
   // },
-  setupFiles: ['<rootDir>/jest.setup.cjs', '<rootDir>/../../config/jest.setup.logging.cjs'],
-  maxWorkers,
+  setupFiles: ['<rootDir>/jest.setup.cjs'],
+  maxWorkers: '50%',
   restoreMocks: true,
   testTimeout: 15000,
 };

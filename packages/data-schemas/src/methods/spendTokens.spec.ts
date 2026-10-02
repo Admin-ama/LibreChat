@@ -1,12 +1,12 @@
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
-import type { IBalance } from '..';
-import type { ITransaction } from '~/schema/transaction';
-import { createTxMethods, tokenValues, premiumTokenValues } from './tx';
 import { matchModelName, findMatchingPattern } from './test-helpers';
+import { createModels } from '~/models';
+import { createTxMethods, tokenValues, premiumTokenValues } from './tx';
 import { createTransactionMethods } from './transaction';
 import { createSpendTokensMethods } from './spendTokens';
-import { createModels } from '~/models';
+import type { ITransaction } from '~/schema/transaction';
+import type { IBalance } from '..';
 
 jest.mock('~/config/winston', () => ({
   error: jest.fn(),
@@ -19,7 +19,9 @@ let mongoServer: InstanceType<typeof MongoMemoryServer>;
 let spendTokens: ReturnType<typeof createSpendTokensMethods>['spendTokens'];
 let spendStructuredTokens: ReturnType<typeof createSpendTokensMethods>['spendStructuredTokens'];
 let createTransaction: ReturnType<typeof createTransactionMethods>['createTransaction'];
-let updateBalance: ReturnType<typeof createTransactionMethods>['updateBalance'];
+let createAutoRefillTransaction: ReturnType<
+  typeof createTransactionMethods
+>['createAutoRefillTransaction'];
 let getCacheMultiplier: ReturnType<typeof createTxMethods>['getCacheMultiplier'];
 
 describe('spendTokens', () => {
@@ -45,7 +47,7 @@ describe('spendTokens', () => {
       getCacheMultiplier: txMethods.getCacheMultiplier,
     });
     createTransaction = transactionMethods.createTransaction;
-    updateBalance = transactionMethods.updateBalance;
+    createAutoRefillTransaction = transactionMethods.createAutoRefillTransaction;
 
     const spendMethods = createSpendTokensMethods(mongoose, {
       createTransaction: transactionMethods.createTransaction,
@@ -298,6 +300,20 @@ describe('spendTokens', () => {
     const transactions = await Transaction.find({ user: userId });
     expect(transactions).toHaveLength(4); // 2 transactions (prompt+completion) for each call
 
+    // Let's examine the actual transaction records to see what's happening
+    const transactionDetails = await Transaction.find({ user: userId }).sort({ createdAt: 1 });
+
+    // Log the transaction details for debugging
+    console.log('Transaction details:');
+    transactionDetails.forEach((tx, i: number) => {
+      console.log(`Transaction ${i + 1}:`, {
+        tokenType: tx.tokenType,
+        rawAmount: tx.rawAmount,
+        tokenValue: tx.tokenValue,
+        model: tx.model,
+      });
+    });
+
     // Check the return values from Transaction.create directly
     // This is to verify that the incrementValue is not becoming positive
     const directResult = await createTransaction({
@@ -309,6 +325,8 @@ describe('spendTokens', () => {
       context: 'test',
       balance: { enabled: true },
     });
+
+    console.log('Direct Transaction.create result:', directResult);
 
     // The completion value should never be positive
     expect(directResult!.completion).not.toBeGreaterThan(0);
@@ -348,6 +366,7 @@ describe('spendTokens', () => {
 
       // Verify tokenValue is negative for all transactions
       transactions.forEach((tx) => {
+        console.log(`Model ${model}, Type ${tx.tokenType}: tokenValue = ${tx.tokenValue}`);
         expect(tx.tokenValue).toBeLessThan(0);
       });
     }
@@ -411,6 +430,23 @@ describe('spendTokens', () => {
     // Verify all transactions were created
     const transactions = await Transaction.find({ user: userId });
     expect(transactions).toHaveLength(4); // 2 transactions (prompt+completion) for each call
+
+    // Let's examine the actual transaction records to see what's happening
+    const transactionDetails = await Transaction.find({ user: userId }).sort({ createdAt: 1 });
+
+    // Log the transaction details for debugging
+    console.log('Structured transaction details:');
+    transactionDetails.forEach((tx, i: number) => {
+      console.log(`Transaction ${i + 1}:`, {
+        tokenType: tx.tokenType,
+        rawAmount: tx.rawAmount,
+        tokenValue: tx.tokenValue,
+        inputTokens: tx.inputTokens,
+        writeTokens: tx.writeTokens,
+        readTokens: tx.readTokens,
+        model: tx.model,
+      });
+    });
   });
 
   it('should not allow balance to go below zero when spending structured tokens', async () => {
@@ -558,6 +594,11 @@ describe('spendTokens', () => {
     // The final balance should be the initial balance minus the expected total spend
     const expectedFinalBalance = initialBalance - expectedTotalSpend;
 
+    console.log('Initial balance:', initialBalance);
+    console.log('Expected total spend:', expectedTotalSpend);
+    console.log('Expected final balance:', expectedFinalBalance);
+    console.log('Actual final balance:', finalBalance!.tokenCredits);
+
     // Allow for small rounding differences
     expect(finalBalance!.tokenCredits).toBeCloseTo(expectedFinalBalance, 0);
 
@@ -571,15 +612,20 @@ describe('spendTokens', () => {
     // Some might be structured, some regular
     expect(transactions.length).toBeGreaterThanOrEqual(collectedUsage.length);
 
+    // Log transaction details for debugging
+    console.log('Transaction summary:');
     let totalTokenValue = 0;
     transactions.forEach((tx) => {
+      console.log(`${tx.tokenType}: rawAmount=${tx.rawAmount}, tokenValue=${tx.tokenValue}`);
       totalTokenValue += tx.tokenValue!;
     });
+    console.log('Total token value from transactions:', totalTokenValue);
 
     // The difference between expected and actual is significant
     // This is likely due to the multipliers being different in the test environment
     // Let's adjust our expectation based on the actual transactions
     const actualSpend = initialBalance - finalBalance!.tokenCredits;
+    console.log('Actual spend:', actualSpend);
 
     // Instead of checking the exact balance, let's verify that:
     // 1. The balance was reduced (tokens were spent)
@@ -588,24 +634,80 @@ describe('spendTokens', () => {
     expect(Math.abs(totalTokenValue)).toBeCloseTo(actualSpend, -3); // Allow for larger differences
   });
 
+  // Add this new test case
   it('should handle multiple concurrent balance increases correctly', async () => {
+    // Start with zero balance
     const initialBalance = 0;
     await Balance.create({
       user: userId,
       tokenCredits: initialBalance,
     });
 
-    const numberOfIncrements = 25;
-    const incrementValue = 1000;
+    const numberOfRefills = 25;
+    const refillAmount = 1000;
 
-    await Promise.all(
-      Array.from({ length: numberOfIncrements }, () =>
-        updateBalance({ user: userId.toString(), incrementValue }),
-      ),
-    );
+    const promises: Promise<unknown>[] = [];
+    for (let i = 0; i < numberOfRefills; i++) {
+      promises.push(
+        createAutoRefillTransaction({
+          user: userId,
+          tokenType: 'credits',
+          context: 'concurrent-refill-test',
+          rawAmount: refillAmount,
+          balance: { enabled: true },
+        }),
+      );
+    }
 
+    // Wait for all refill transactions to complete
+    const results = await Promise.all(promises);
+
+    // Verify final balance
     const finalBalance = await Balance.findOne({ user: userId });
-    expect(finalBalance!.tokenCredits).toBe(initialBalance + numberOfIncrements * incrementValue);
+    expect(finalBalance).toBeDefined();
+
+    // The final balance should be the initial balance plus the sum of all refills
+    const expectedFinalBalance = initialBalance + numberOfRefills * refillAmount;
+
+    console.log('Initial balance (Increase Test):', initialBalance);
+    console.log(`Performed ${numberOfRefills} refills of ${refillAmount} each.`);
+    console.log('Expected final balance (Increase Test):', expectedFinalBalance);
+    console.log('Actual final balance (Increase Test):', finalBalance!.tokenCredits);
+
+    // Use toBeCloseTo for safety, though toBe should work for integer math
+    expect(finalBalance!.tokenCredits).toBeCloseTo(expectedFinalBalance, 0);
+
+    // Verify all transactions were created
+    const transactions = await Transaction.find({
+      user: userId,
+      context: 'concurrent-refill-test',
+    });
+
+    // We should have one transaction for each refill attempt
+    expect(transactions.length).toBe(numberOfRefills);
+
+    // Optional: Verify the sum of increments from the results matches the balance change
+    const totalIncrementReported = results.reduce((sum: number, result) => {
+      // Assuming createAutoRefillTransaction returns an object with the increment amount
+      // Adjust this based on the actual return structure.
+      // Let's assume it returns { balance: newBalance, transaction: { rawAmount: ... } }
+      // Or perhaps we check the transaction.rawAmount directly
+      const r = result as Record<string, Record<string, unknown>>;
+      return sum + ((r?.transaction?.rawAmount as number) || 0);
+    }, 0);
+    console.log('Total increment reported by results:', totalIncrementReported);
+    expect(totalIncrementReported).toBe(expectedFinalBalance - initialBalance);
+
+    // Optional: Check the sum of tokenValue from saved transactions
+    let totalTokenValueFromDb = 0;
+    transactions.forEach((tx) => {
+      // For refills, rawAmount is positive, and tokenValue might be calculated based on it
+      // Let's assume tokenValue directly reflects the increment for simplicity here
+      // If calculation is involved, adjust accordingly
+      totalTokenValueFromDb += tx.rawAmount!; // Or tx.tokenValue if that holds the increment
+    });
+    console.log('Total rawAmount from DB transactions:', totalTokenValueFromDb);
+    expect(totalTokenValueFromDb).toBeCloseTo(expectedFinalBalance - initialBalance, 0);
   });
 
   it('should create structured transactions for both prompt and completion tokens', async () => {

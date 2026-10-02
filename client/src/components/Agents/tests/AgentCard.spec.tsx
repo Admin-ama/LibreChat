@@ -91,45 +91,52 @@ jest.mock('~/Providers', () => ({
 }));
 
 // Mock @librechat/client with proper Dialog behavior
-jest.mock('@librechat/client', () => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const React = require('react');
-  return {
-    useToastContext: jest.fn(() => ({
-      showToast: jest.fn(),
-    })),
-    OGDialog: ({ children, open, onOpenChange }: any) => {
-      // Store onOpenChange in context for trigger to call
-      return (
-        <div data-testid="dialog-wrapper" data-open={open}>
-          {React.Children.map(children, (child: any) => {
-            if (child?.type?.displayName === 'OGDialogTrigger' || child?.props?.['data-trigger']) {
-              return React.cloneElement(child, { onOpenChange });
-            }
-            // Only render content when open
-            if (child?.type?.displayName === 'OGDialogContent' && !open) {
-              return null;
-            }
-            return child;
-          })}
-        </div>
-      );
-    },
-    OGDialogTrigger: ({ children, asChild, onOpenChange }: any) => {
-      if (asChild && React.isValidElement(children)) {
-        return React.cloneElement(children as React.ReactElement<any>, {
-          onClick: (e: any) => {
-            (children as any).props?.onClick?.(e);
-            onOpenChange?.(true);
-          },
-        });
-      }
-      return <div onClick={() => onOpenChange?.(true)}>{children}</div>;
-    },
-    OGDialogContent: ({ children }: any) => <div data-testid="dialog-content">{children}</div>,
-    Label: ({ children, className }: any) => <span className={className}>{children}</span>,
-  };
-});
+jest.mock(
+  '@librechat/client',
+  () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const React = require('react');
+    return {
+      useToastContext: jest.fn(() => ({
+        showToast: jest.fn(),
+      })),
+      OGDialog: ({ children, open, onOpenChange }: any) => {
+        // Store onOpenChange in context for trigger to call
+        return (
+          <div data-testid="dialog-wrapper" data-open={open}>
+            {React.Children.map(children, (child: any) => {
+              if (
+                child?.type?.displayName === 'OGDialogTrigger' ||
+                child?.props?.['data-trigger']
+              ) {
+                return React.cloneElement(child, { onOpenChange });
+              }
+              // Only render content when open
+              if (child?.type?.displayName === 'OGDialogContent' && !open) {
+                return null;
+              }
+              return child;
+            })}
+          </div>
+        );
+      },
+      OGDialogTrigger: ({ children, asChild, onOpenChange }: any) => {
+        if (asChild && React.isValidElement(children)) {
+          return React.cloneElement(children as React.ReactElement<any>, {
+            onClick: (e: any) => {
+              (children as any).props?.onClick?.(e);
+              onOpenChange?.(true);
+            },
+          });
+        }
+        return <div onClick={() => onOpenChange?.(true)}>{children}</div>;
+      },
+      OGDialogContent: ({ children }: any) => <div data-testid="dialog-content">{children}</div>,
+      Label: ({ children, className }: any) => <span className={className}>{children}</span>,
+    };
+  },
+  { virtual: true },
+);
 
 // Create wrapper with QueryClient
 const createWrapper = () => {
@@ -183,27 +190,6 @@ describe('AgentCard', () => {
 
     expect(screen.getByText('Test Agent')).toBeInTheDocument();
     expect(screen.getByText('A test agent for testing purposes')).toBeInTheDocument();
-  });
-
-  it('renders an HTML description as plain text in the card and accessible label', () => {
-    render(
-      <Wrapper>
-        <AgentCard
-          agent={{
-            ...mockAgent,
-            description:
-              '<span>Assistant for projects. <a href="https://example.com">Read the guide</a></span>',
-          }}
-        />
-      </Wrapper>,
-    );
-
-    expect(screen.getByText('Assistant for projects. Read the guide')).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Read the guide' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button')).toHaveAttribute(
-      'aria-label',
-      'Test Agent agent. Assistant for projects. Read the guide',
-    );
   });
 
   it('displays avatar when provided as object', () => {

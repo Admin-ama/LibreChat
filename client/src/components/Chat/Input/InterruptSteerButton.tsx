@@ -7,7 +7,6 @@ import { cn } from '~/utils';
 
 type InterruptSteerButtonProps = {
   steering: SteeringControls;
-  isNewConversation: boolean;
   getText: () => string;
   onConsumed: () => void;
   /** External hold (e.g. uploads in flight), mirroring the send button. */
@@ -15,9 +14,10 @@ type InterruptSteerButtonProps = {
 };
 
 /**
- * Always-visible composer control for earlier steering. Before a conversation
- * exists, steering cannot reach the run, so this control instead stops the
- * response and sends a new turn. Its label must reflect that fallback.
+ * Always-visible composer control with one fixed meaning: stop writing now,
+ * keep what is written, and steer from here. Distinct from the send button's
+ * hovercard, whose primary action follows the user's during-run preference —
+ * this one never changes what it does.
  *
  * `type="button"`: the composer footer sits inside the chat form, and only
  * `DuringRunSendButton` may receive Enter's synthetic submit.
@@ -25,9 +25,7 @@ type InterruptSteerButtonProps = {
 const InterruptSteerButton = React.memo((props: InterruptSteerButtonProps) => {
   const localize = useLocalize();
   const { steering } = props;
-  const label = localize(
-    props.isNewConversation ? 'com_ui_steer_first_turn_stop' : 'com_ui_interrupt_steer_button',
-  );
+  const label = localize('com_ui_interrupt_steer_button');
   /** Pre-empts the server's 409: a paused run cannot accept a steer. */
   const disabled =
     props.disabled === true || steering.pausedOnApproval || !steering.canControlGeneration;
@@ -53,9 +51,9 @@ const InterruptSteerButton = React.memo((props: InterruptSteerButtonProps) => {
             disabled={disabled}
             onClick={onClick}
             className={cn(
-              'flex size-theme-control items-center justify-center rounded-theme-control-round border border-border-light',
-              'text-text-secondary transition-colors duration-theme-normal',
-              'hover:bg-surface-composer-hover hover:text-text-primary',
+              'flex size-9 items-center justify-center rounded-full border border-border-light',
+              'text-text-secondary transition-colors duration-200',
+              'hover:bg-surface-hover hover:text-text-primary',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-xheavy',
               'disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent',
             )}
@@ -65,11 +63,7 @@ const InterruptSteerButton = React.memo((props: InterruptSteerButtonProps) => {
         }
       />
       <Ariakit.Tooltip className="z-50 rounded-lg bg-surface-tertiary px-2 py-1 text-xs text-text-primary shadow-lg">
-        {localize(
-          props.isNewConversation
-            ? 'com_ui_steer_first_turn_stop_info'
-            : 'com_ui_interrupt_steer_desc',
-        )}
+        {localize('com_ui_interrupt_steer_desc')}
       </Ariakit.Tooltip>
     </Ariakit.TooltipProvider>
   );

@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import type { TableColumn } from './DataTable.types';
 import { SelectionCheckbox, SkeletonRows } from './DataTableComponents';
+import type { TableColumn } from './DataTable.types';
 
 // Mock the cn utility
 jest.mock('~/utils', () => ({
@@ -121,8 +121,8 @@ describe('DataTableComponents', () => {
       const mockOnChange = jest.fn();
       render(<SelectionCheckbox checked={false} onChange={mockOnChange} ariaLabel="Select row" />);
 
-      const checkbox = screen.getByRole('checkbox');
-      fireEvent.click(checkbox);
+      const wrapper = screen.getByRole('button');
+      fireEvent.click(wrapper);
 
       expect(mockOnChange).toHaveBeenCalledWith(true);
     });
@@ -131,17 +131,42 @@ describe('DataTableComponents', () => {
       const mockOnChange = jest.fn();
       render(<SelectionCheckbox checked={true} onChange={mockOnChange} ariaLabel="Select row" />);
 
-      const checkbox = screen.getByRole('checkbox');
-      fireEvent.click(checkbox);
+      const wrapper = screen.getByRole('button');
+      fireEvent.click(wrapper);
 
       expect(mockOnChange).toHaveBeenCalledWith(false);
     });
 
-    it('should expose one native checkbox control', () => {
-      render(<SelectionCheckbox checked={false} onChange={jest.fn()} ariaLabel="Select row" />);
+    it('should trigger onChange on Enter key', () => {
+      const mockOnChange = jest.fn();
+      render(<SelectionCheckbox checked={false} onChange={mockOnChange} ariaLabel="Select row" />);
 
-      expect(screen.getByRole('checkbox')).toBeInTheDocument();
-      expect(screen.queryByRole('button')).not.toBeInTheDocument();
+      const wrapper = screen.getByRole('button');
+      fireEvent.keyDown(wrapper, { key: 'Enter' });
+
+      expect(mockOnChange).toHaveBeenCalledWith(true);
+    });
+
+    it('should trigger onChange on Space key', () => {
+      const mockOnChange = jest.fn();
+      render(<SelectionCheckbox checked={false} onChange={mockOnChange} ariaLabel="Select row" />);
+
+      const wrapper = screen.getByRole('button');
+      fireEvent.keyDown(wrapper, { key: ' ' });
+
+      expect(mockOnChange).toHaveBeenCalledWith(true);
+    });
+
+    it('should not trigger onChange on other keys', () => {
+      const mockOnChange = jest.fn();
+      render(<SelectionCheckbox checked={false} onChange={mockOnChange} ariaLabel="Select row" />);
+
+      const wrapper = screen.getByRole('button');
+      fireEvent.keyDown(wrapper, { key: 'a' });
+      fireEvent.keyDown(wrapper, { key: 'Tab' });
+      fireEvent.keyDown(wrapper, { key: 'Escape' });
+
+      expect(mockOnChange).not.toHaveBeenCalled();
     });
 
     it('should stop event propagation on click', () => {
@@ -154,8 +179,8 @@ describe('DataTableComponents', () => {
         </div>,
       );
 
-      const checkbox = screen.getByRole('checkbox');
-      fireEvent.click(checkbox);
+      const wrapper = screen.getByRole('button');
+      fireEvent.click(wrapper);
 
       expect(mockOnChange).toHaveBeenCalled();
       expect(mockParentClick).not.toHaveBeenCalled();
@@ -171,18 +196,18 @@ describe('DataTableComponents', () => {
         </div>,
       );
 
-      const checkbox = screen.getByRole('checkbox');
-      fireEvent.keyDown(checkbox, { key: 'Enter' });
+      const wrapper = screen.getByRole('button');
+      fireEvent.keyDown(wrapper, { key: 'Enter' });
 
-      expect(mockOnChange).not.toHaveBeenCalled();
+      expect(mockOnChange).toHaveBeenCalled();
       expect(mockParentKeyDown).not.toHaveBeenCalled();
     });
 
-    it('should remain keyboard focusable', () => {
+    it('should have tabIndex 0 for keyboard accessibility', () => {
       render(<SelectionCheckbox checked={false} onChange={jest.fn()} ariaLabel="Select row" />);
 
-      const checkbox = screen.getByRole('checkbox');
-      expect(checkbox).not.toHaveAttribute('tabindex', '-1');
+      const wrapper = screen.getByRole('button');
+      expect(wrapper).toHaveAttribute('tabindex', '0');
     });
   });
 

@@ -4,13 +4,13 @@
   flex-direction: column;
   overflow: auto;
   overscroll-behavior: contain;
-  border-radius: 0.7rem;
+  border-radius: 1rem;
   border-width: 1px;
   border-style: solid;
-  border-color: rgb(var(--border-light) / var(--border-light-alpha, 1));
-  background-color: rgb(var(--surface-primary));
+  border-color: var(--border-light);
+  background-color: var(--surface-primary);
   padding: 0.5rem;
-  color: rgb(var(--text-primary));
+  color: var(--text-primary);
   box-shadow:
     0 10px 15px -3px rgb(0 0 0 / 0.1),
     0 4px 6px -4px rgb(0 0 0 / 0.1);
@@ -22,14 +22,6 @@
   scale: 0.95;
   margin-top: 4px;
   margin-right: -2px;
-}
-
-/* Elevation here is a black shadow, which carries no separation at all against
- * a pure black surface. Lives with the primitive rather than in the app
- * stylesheet, which the published package does not include. */
-html.high-contrast .popover-ui {
-  border: 1px solid rgb(var(--border-medium));
-  box-shadow: none;
 }
 
 .popover-animate {
@@ -46,13 +38,13 @@ html.high-contrast .popover-ui {
 
 .popover-ui:focus-visible,
 .popover-ui[data-focus-visible] {
-  outline: 2px solid rgb(var(--text-primary));
+  outline: var(--bg-surface-hover);
   outline-offset: -1px;
 }
 
 .popover-ui:where(.dark, .dark *) {
-  background-color: rgb(var(--surface-secondary));
-  color: rgb(var(--text-secondary));
+  background-color: var(--surface-secondary);
+  color: var(--text-secondary);
   box-shadow:
     0 10px 15px -3px rgb(0 0 0 / 0.25),
     0 4px 6px -4px rgb(0 0 0 / 0.1);
@@ -74,8 +66,8 @@ html.high-contrast .popover-ui {
 }
 
 .select-item[data-active-item] {
-  background-color: rgb(var(--surface-hover));
-  color: rgb(var(--text-primary));
+  background-color: var(--surface-hover);
+  color: var(--text-primary);
 }
 
 .popover-ui[data-enter] {

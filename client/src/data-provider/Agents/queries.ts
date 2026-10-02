@@ -6,24 +6,15 @@ import type {
   UseInfiniteQueryOptions,
 } from '@tanstack/react-query';
 import type t from 'librechat-data-provider';
-import { retryTransientQuery } from '../retry';
 import { isEphemeralAgent } from '~/common';
 
 /**
  * AGENTS
  */
 export const defaultAgentParams: t.AgentListParams = {
+  limit: 10,
   requiredPermission: PermissionBits.EDIT,
 };
-
-/**
- * Page size for the internal pagination walk. Callers consume the flattened result, so
- * every page costs a serial round trip with no benefit: request the server's maximum
- * (`getListAgentsByAccess` caps at 1000) so realistic agent sets resolve in one request.
- * Kept out of the query key, and applied last so a caller-supplied `limit` cannot shrink
- * it: this is a transport detail, and a caller limit never bounds what the walk returns.
- */
-const WALK_PAGE_SIZE = 1000;
 
 /** Walk the cursor pagination and return all pages flattened into one `AgentListResponse`. */
 async function fetchAllAgentPages(params: t.AgentListParams): Promise<t.AgentListResponse> {
@@ -33,7 +24,6 @@ async function fetchAllAgentPages(params: t.AgentListParams): Promise<t.AgentLis
     const page = await dataService.listAgents({
       ...params,
       ...(cursor ? { cursor } : {}),
-      limit: WALK_PAGE_SIZE,
     });
     pages.push(page);
     cursor = page.after;
@@ -75,13 +65,8 @@ export const useListAgentsQuery = <TData = t.AgentListResponse>(
   params: t.AgentListParams = defaultAgentParams,
   config?: UseQueryOptions<t.AgentListResponse, unknown, TData>,
 ): QueryObserverResult<TData> => {
-  /** The shell owns fetching endpoints. Observe its query, but do not start a second
-   * request or couple this shared agent hook to the shell's Recoil gate. */
-  const { data: endpointsConfig } = useQuery<t.TEndpointsConfig>(
-    [QueryKeys.endpoints],
-    () => dataService.getAIEndpoints(),
-    { enabled: false },
-  );
+  const queryClient = useQueryClient();
+  const endpointsConfig = queryClient.getQueryData<t.TEndpointsConfig>([QueryKeys.endpoints]);
 
   const enabled = !!endpointsConfig?.[EModelEndpoint.agents];
   return useQuery<t.AgentListResponse, unknown, TData>(
@@ -89,10 +74,10 @@ export const useListAgentsQuery = <TData = t.AgentListResponse>(
     () => fetchAllAgentPages(params),
     {
       staleTime: 1000 * 5,
-      refetchOnWindowFocus: true,
-      refetchOnReconnect: true,
-      refetchOnMount: true,
-      retry: retryTransientQuery,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      refetchOnMount: false,
+      retry: false,
       ...config,
       enabled: config?.enabled !== undefined ? config.enabled && enabled : enabled,
     },
@@ -115,11 +100,10 @@ export const useGetAgentByIdQuery = (
         agent_id: agent_id as string,
       }),
     {
-      staleTime: 1000 * 5,
-      refetchOnWindowFocus: true,
-      refetchOnReconnect: true,
-      refetchOnMount: true,
-      retry: retryTransientQuery,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      refetchOnMount: false,
+      retry: false,
       ...config,
       enabled: isValidAgentId && (config?.enabled ?? true),
     },

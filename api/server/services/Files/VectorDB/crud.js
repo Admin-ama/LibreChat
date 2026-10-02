@@ -64,7 +64,7 @@ const deleteVectors = async (req, file) => {
  *            - filepath: The path where the file is saved.
  *            - bytes: The size of the file in bytes.
  */
-async function uploadVectors({ req, file, file_id, entity_id, storageMetadata, signal }) {
+async function uploadVectors({ req, file, file_id, entity_id, storageMetadata }) {
   if (!process.env.RAG_API_URL) {
     throw new Error('RAG_API_URL not defined');
   }
@@ -86,7 +86,6 @@ async function uploadVectors({ req, file, file_id, entity_id, storageMetadata, s
     const formHeaders = formData.getHeaders();
 
     const response = await axios.post(`${process.env.RAG_API_URL}/embed`, formData, {
-      ...(signal ? { signal } : {}),
       headers: {
         Authorization: `Bearer ${jwtToken}`,
         accept: 'application/json',

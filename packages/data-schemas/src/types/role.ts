@@ -77,10 +77,6 @@ export interface IRole extends Document {
       [Permissions.SHARE]?: boolean;
       [Permissions.SHARE_PUBLIC]?: boolean;
     };
-    [PermissionTypes.SCHEDULES]?: {
-      [Permissions.USE]?: boolean;
-      [Permissions.CREATE]?: boolean;
-    };
   };
   tenantId?: string;
 }

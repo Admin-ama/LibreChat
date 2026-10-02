@@ -5,7 +5,6 @@ jest.mock('@keyv/redis', () => ({
 }));
 
 jest.mock('../../redisClients', () => ({
-  handleKeyvRedisError: jest.fn(),
   keyvRedisClient: null,
   ioredisClient: null,
 }));

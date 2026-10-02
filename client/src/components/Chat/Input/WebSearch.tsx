@@ -4,7 +4,6 @@ import { CheckboxButton } from '@librechat/client';
 import { Permissions, PermissionTypes } from 'librechat-data-provider';
 import { useLocalize, useHasAccess } from '~/hooks';
 import { useBadgeRowContext } from '~/Providers';
-import { badgeAccents } from './accents';
 
 function WebSearch() {
   const localize = useLocalize();
@@ -27,10 +26,11 @@ function WebSearch() {
     (isPinned || (webSearch && authData?.authenticated)) && (
       <CheckboxButton
         ref={badgeTriggerRef}
+        className="max-w-fit"
         checked={webSearch}
         setValue={debouncedChange}
         label={localize('com_ui_search')}
-        isCheckedClassName={badgeAccents.blue}
+        isCheckedClassName="border-blue-600/40 bg-blue-500/10 hover:bg-blue-700/10"
         icon={<Globe className="icon-md" aria-hidden="true" />}
       />
     )

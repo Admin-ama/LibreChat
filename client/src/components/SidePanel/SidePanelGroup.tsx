@@ -4,25 +4,24 @@ import { ResizablePanel, ResizablePanelGroup, useMediaQuery } from '@librechat/c
 import ArtifactsPanel from './ArtifactsPanel';
 
 const PANEL_IDS_SINGLE = ['messages-view'];
-/** Keep the persisted id stable so existing artifact panel widths carry over. */
 const PANEL_IDS_SPLIT = ['messages-view', 'artifacts-panel'];
 
 interface SidePanelProps {
-  panel?: React.ReactNode;
+  artifacts?: React.ReactNode;
   children: React.ReactNode;
 }
 
-const SidePanelGroup = memo(({ panel, children }: SidePanelProps) => {
-  const [shouldRenderPanel, setShouldRenderPanel] = useState(panel != null);
+const SidePanelGroup = memo(({ artifacts, children }: SidePanelProps) => {
+  const [shouldRenderArtifacts, setShouldRenderArtifacts] = useState(artifacts != null);
   const isSmallScreen = useMediaQuery('(max-width: 767px)');
 
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: 'side-panel-layout',
-    panelIds: panel != null ? PANEL_IDS_SPLIT : PANEL_IDS_SINGLE,
+    panelIds: artifacts != null ? PANEL_IDS_SPLIT : PANEL_IDS_SINGLE,
     storage: localStorage,
   });
 
-  const minSizeMain = panel != null ? '15' : '30';
+  const minSizeMain = artifacts != null ? '15' : '30';
 
   return (
     <>
@@ -38,14 +37,16 @@ const SidePanelGroup = memo(({ panel, children }: SidePanelProps) => {
 
         {!isSmallScreen && (
           <ArtifactsPanel
-            panel={panel}
+            artifacts={artifacts}
             minSizeMain={minSizeMain}
-            shouldRender={shouldRenderPanel}
-            onRenderChange={setShouldRenderPanel}
+            shouldRender={shouldRenderArtifacts}
+            onRenderChange={setShouldRenderArtifacts}
           />
         )}
       </ResizablePanelGroup>
-      {panel != null && isSmallScreen && <div className="fixed inset-0 z-[100]">{panel}</div>}
+      {artifacts != null && isSmallScreen && (
+        <div className="fixed inset-0 z-[100]">{artifacts}</div>
+      )}
     </>
   );
 });

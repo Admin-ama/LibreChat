@@ -1,9 +1,4 @@
-import {
-  getEndpointField,
-  isAssistantsEndpoint,
-  isAgentsEndpoint,
-  ProviderId,
-} from 'librechat-data-provider';
+import { getEndpointField, isAssistantsEndpoint, isAgentsEndpoint } from 'librechat-data-provider';
 import type {
   TPreset,
   TConversation,
@@ -11,10 +6,9 @@ import type {
   TAssistantsMap,
   TEndpointsConfig,
 } from 'librechat-data-provider';
-import { getAgentAvatarUrl, getIconEndpoint, cn } from '~/utils';
 import ConvoIconURL from '~/components/Endpoints/ConvoIconURL';
 import MinimalIcon from '~/components/Endpoints/MinimalIcon';
-import { resolveProviderIcon } from '~/hooks/Endpoint';
+import { getAgentAvatarUrl, getIconEndpoint } from '~/utils';
 import { isImageURL } from '~/utils/icons';
 
 const emptyEndpointsConfig = {} as TEndpointsConfig;
@@ -42,8 +36,8 @@ export default function EndpointIcon({
   let endpoint = originalEndpoint;
   endpoint = getIconEndpoint({ endpointsConfig, iconURL: convoIconURL, endpoint });
 
+  const endpointType = getEndpointField(endpointsConfig, endpoint, 'type');
   const endpointIconURL = getEndpointField(endpointsConfig, endpoint, 'iconURL');
-  const { provider } = resolveProviderIcon({ endpoint, endpointsConfig });
 
   const agent = isAgentsEndpoint(endpoint) ? agentsMap?.[conversation?.agent_id ?? ''] : null;
   const assistant = isAssistantsEndpoint(endpoint)
@@ -65,28 +59,28 @@ export default function EndpointIcon({
       <ConvoIconURL
         iconURL={iconURL}
         modelLabel={entityName || conversation?.chatGptLabel || conversation?.modelLabel || ''}
-        provider={provider}
         context={context}
+        endpointIconURL={endpointIconURL}
         assistantAvatar={assistantAvatar}
         assistantName={assistantName ?? ''}
         agentAvatar={agentAvatar}
         agentName={agentName}
       />
     );
+  } else {
+    return (
+      <MinimalIcon
+        iconURL={endpointIconURL}
+        endpoint={endpoint}
+        endpointType={endpointType}
+        model={conversation?.model}
+        error={false}
+        className={className}
+        size={size}
+        isCreatedByUser={false}
+        chatGptLabel={undefined}
+        modelLabel={undefined}
+      />
+    );
   }
-
-  return (
-    <MinimalIcon
-      iconURL={endpointIconURL}
-      endpoint={endpoint}
-      endpointsConfig={endpointsConfig}
-      model={conversation?.model}
-      error={false}
-      className={cn(className, context === 'landing' && provider === ProviderId.cohere && 'p-2')}
-      size={size}
-      isCreatedByUser={false}
-      chatGptLabel={undefined}
-      modelLabel={undefined}
-    />
-  );
 }

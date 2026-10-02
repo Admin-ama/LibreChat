@@ -1,6 +1,6 @@
 import { logger } from '@librechat/data-schemas';
 import { ResourceType, PermissionBits, hasPermissions } from 'librechat-data-provider';
-import type { Request, Response, NextFunction, RequestHandler } from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import type { IUser } from '@librechat/data-schemas';
 import type { Types } from 'mongoose';
 import { getRemoteAgentPermissions } from './service';
@@ -11,7 +11,6 @@ export interface ApiKeyAuthDependencies {
     keyId: Types.ObjectId;
   } | null>;
   findUser: (query: { _id: string | Types.ObjectId }) => Promise<IUser | null>;
-  isPrincipalActive: (userId: string) => Promise<boolean>;
 }
 
 export interface RemoteAgentAccessDependencies {
@@ -35,8 +34,6 @@ export interface RemoteAgentAccessRequest extends ApiKeyAuthRequest {
   agent?: { _id: Types.ObjectId; [key: string]: unknown };
   agentPermissions?: number;
 }
-
-type AgentIdResolver = (req: RemoteAgentAccessRequest) => string | undefined;
 
 export function createRequireApiKeyAuth(deps: ApiKeyAuthDependencies) {
   return async (
@@ -81,11 +78,7 @@ export function createRequireApiKeyAuth(deps: ApiKeyAuthDependencies) {
         });
       }
 
-      const userId = keyValidation.userId.toString();
-      const [user, principalActive] = await Promise.all([
-        deps.findUser({ _id: keyValidation.userId }),
-        deps.isPrincipalActive(userId),
-      ]);
+      const user = await deps.findUser({ _id: keyValidation.userId });
 
       if (!user) {
         return res.status(401).json({
@@ -98,15 +91,6 @@ export function createRequireApiKeyAuth(deps: ApiKeyAuthDependencies) {
       }
 
       user.id = (user._id as Types.ObjectId).toString();
-      if (!principalActive) {
-        return res.status(409).json({
-          error: {
-            message: 'Account deletion is in progress',
-            type: 'invalid_request_error',
-            code: 'account_deletion_in_progress',
-          },
-        });
-      }
       req.user = user as IUser & { id: string };
       req.apiKeyId = keyValidation.keyId;
 
@@ -124,37 +108,35 @@ export function createRequireApiKeyAuth(deps: ApiKeyAuthDependencies) {
   };
 }
 
-function createAgentAccessMiddleware(
-  deps: RemoteAgentAccessDependencies,
-  resolveAgentId: AgentIdResolver,
-): RequestHandler {
-  return async (baseReq, res, next): Promise<void> => {
-    const req = baseReq as RemoteAgentAccessRequest;
-    const agentId = resolveAgentId(req);
+export function createCheckRemoteAgentAccess(deps: RemoteAgentAccessDependencies) {
+  return async (
+    req: RemoteAgentAccessRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<Response | undefined> => {
+    const agentId = req.body?.model || req.params?.model;
 
-    if (typeof agentId !== 'string' || agentId.trim() === '') {
-      res.status(400).json({
+    if (!agentId) {
+      return res.status(400).json({
         error: {
           message: 'Model (agent ID) is required',
           type: 'invalid_request_error',
           code: 'missing_model',
         },
       });
-      return;
     }
 
     try {
       const agent = await deps.getAgent({ id: agentId });
 
       if (!agent) {
-        res.status(404).json({
+        return res.status(404).json({
           error: {
             message: `Agent not found: ${agentId}`,
             type: 'invalid_request_error',
             code: 'model_not_found',
           },
         });
-        return;
       }
 
       const userId = req.user?.id || '';
@@ -162,14 +144,13 @@ function createAgentAccessMiddleware(
       const permissions = await getRemoteAgentPermissions(deps, userId, req.user?.role, agent._id);
 
       if (!hasPermissions(permissions, PermissionBits.VIEW)) {
-        res.status(403).json({
+        return res.status(403).json({
           error: {
             message: `No remote access to agent: ${agentId}`,
             type: 'permission_error',
             code: 'access_denied',
           },
         });
-        return;
       }
 
       req.agent = agent;
@@ -178,7 +159,7 @@ function createAgentAccessMiddleware(
       next();
     } catch (error) {
       logger.error('[checkRemoteAgentAccess] Error checking agent access:', error);
-      res.status(500).json({
+      return res.status(500).json({
         error: {
           message: 'Internal server error while checking agent access',
           type: 'server_error',
@@ -187,12 +168,4 @@ function createAgentAccessMiddleware(
       });
     }
   };
-}
-
-export function createCheckRemoteAgentAccess(deps: RemoteAgentAccessDependencies): RequestHandler {
-  return createAgentAccessMiddleware(deps, (req) => req.body?.model || req.params?.model);
-}
-
-export function createCheckAgentTriggerAccess(deps: RemoteAgentAccessDependencies): RequestHandler {
-  return createAgentAccessMiddleware(deps, (req) => req.body?.target?.agentId);
 }

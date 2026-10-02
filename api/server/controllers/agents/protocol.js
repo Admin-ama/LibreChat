@@ -34,10 +34,18 @@ function getRequestedGenerationProtocol(req) {
     : GENERATION_PROTOCOL_V1;
 }
 
-/** The current server contract supports protocol v2 for every built-in store.
- * Client advertisement still decides whether a new generation uses v1 or v2. */
-function getServerGenerationProtocol() {
-  return GENERATION_PROTOCOL_V2;
+/**
+ * Redis state is shared by every replica, including an older binary during a
+ * rolling deployment. Default it to the bridge-safe v1 protocol until an
+ * operator completes the documented homogeneous-fleet cutover. In-memory
+ * state cannot be touched by another process, so it can use v2 immediately.
+ */
+function getServerGenerationProtocol(manager) {
+  const configured = parseProtocolVersion(process.env.GENERATION_PROTOCOL_VERSION);
+  if (configured != null) {
+    return configured;
+  }
+  return manager?.isRedis === true ? GENERATION_PROTOCOL_V1 : GENERATION_PROTOCOL_V2;
 }
 
 function getJobGenerationProtocol(job) {
@@ -45,8 +53,8 @@ function getJobGenerationProtocol(job) {
 }
 
 /** Selects an immutable protocol for a newly created generation. */
-function negotiateNewGenerationProtocol(req) {
-  return Math.min(getRequestedGenerationProtocol(req), getServerGenerationProtocol());
+function negotiateNewGenerationProtocol(req, manager) {
+  return Math.min(getRequestedGenerationProtocol(req), getServerGenerationProtocol(manager));
 }
 
 /**

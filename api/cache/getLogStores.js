@@ -11,7 +11,7 @@ const {
   registerShutdownTask,
 } = require('@librechat/api');
 
-/** No-op store for cache namespaces that are deliberately disabled. */
+/** No-op store registered when the user principals cache is disabled (TTL of 0). */
 const disabledCache = {
   get: async () => undefined,
   set: async () => undefined,
@@ -30,7 +30,6 @@ const namespaces = {
   [ViolationTypes.TTS_LIMIT]: violationCache(ViolationTypes.TTS_LIMIT),
   [ViolationTypes.STT_LIMIT]: violationCache(ViolationTypes.STT_LIMIT),
   [ViolationTypes.CONVO_ACCESS]: violationCache(ViolationTypes.CONVO_ACCESS),
-  [ViolationTypes.SHARE_LIMIT]: violationCache(ViolationTypes.SHARE_LIMIT),
   [ViolationTypes.TOOL_CALL_LIMIT]: violationCache(ViolationTypes.TOOL_CALL_LIMIT),
   [ViolationTypes.FILE_UPLOAD_LIMIT]: violationCache(ViolationTypes.FILE_UPLOAD_LIMIT),
   [ViolationTypes.VERIFY_EMAIL_LIMIT]: violationCache(ViolationTypes.VERIFY_EMAIL_LIMIT),
@@ -47,8 +46,6 @@ const namespaces = {
 
   [CacheKeys.ROLES]: standardCache(CacheKeys.ROLES),
   [CacheKeys.USER_PRINCIPALS]: userPrincipalsCache() ?? disabledCache,
-  /** Authorization IDs stay uncached because a failed shared invalidation cannot fail closed. */
-  [CacheKeys.PROMPT_GROUPS_ACCESS]: disabledCache,
   [CacheKeys.APP_CONFIG]: standardCache(CacheKeys.APP_CONFIG),
   [CacheKeys.CONFIG_STORE]: standardCache(CacheKeys.CONFIG_STORE),
   [CacheKeys.TOOL_CACHE]: standardCache(CacheKeys.TOOL_CACHE),

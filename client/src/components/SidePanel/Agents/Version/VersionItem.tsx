@@ -3,14 +3,13 @@ import { formatDistanceToNow } from 'date-fns';
 import { Check, RotateCcw, Circle } from 'lucide-react';
 import {
   Label,
-  Button,
   OGDialog,
   OGDialogTrigger,
   OGDialogTemplate,
   TooltipAnchor,
 } from '@librechat/client';
 import type { VersionRecord } from './types';
-import { useLocalize, useClockFormat } from '~/hooks';
+import { useLocalize } from '~/hooks';
 import { cn } from '~/utils';
 
 type VersionItemProps = {
@@ -45,7 +44,6 @@ export default function VersionItem({
   onRestore,
 }: VersionItemProps) {
   const localize = useLocalize();
-  const hour12 = useClockFormat();
   const [open, setOpen] = useState(false);
 
   const versionNumber = versionsLength - index;
@@ -61,7 +59,7 @@ export default function VersionItem({
       : 'com_ui_agent_version_no_date',
   );
   const relativeLabel = date ? formatDistanceToNow(date, { addSuffix: true }) : fallbackDateLabel;
-  const absoluteLabel = date ? date.toLocaleString(undefined, { hour12 }) : relativeLabel;
+  const absoluteLabel = date ? date.toLocaleString() : relativeLabel;
 
   const toolsCount = countItems(version.tools);
   const capabilitiesCount = countItems(version.capabilities);
@@ -95,7 +93,7 @@ export default function VersionItem({
           <div
             className={cn(
               'absolute -bottom-3 top-0 w-px',
-              isActive ? 'bg-status-success-strong' : 'bg-border-light',
+              isActive ? 'bg-green-500/40' : 'bg-border-light',
             )}
           />
         )}
@@ -103,7 +101,7 @@ export default function VersionItem({
           className={cn(
             'relative z-10 mt-4 flex size-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors',
             isActive
-              ? 'border-status-success-strong bg-status-success-strong text-text-on-status'
+              ? 'border-green-500 bg-green-500 text-white'
               : 'border-border-medium bg-surface-primary text-text-secondary',
           )}
           aria-hidden="true"
@@ -121,7 +119,7 @@ export default function VersionItem({
         className={cn(
           'group relative mb-2 ml-2 flex flex-1 flex-col rounded-xl border p-3 transition-colors',
           isActive
-            ? 'border-status-success-border bg-status-success-subtle'
+            ? 'border-green-500/40 bg-green-50/60 dark:border-green-500/30 dark:bg-green-950/20'
             : 'border-border-light bg-transparent hover:border-border-medium hover:bg-surface-secondary',
         )}
       >
@@ -131,17 +129,14 @@ export default function VersionItem({
               <span
                 className={cn(
                   'truncate text-sm font-semibold',
-                  isActive ? 'text-status-success' : 'text-text-primary',
+                  isActive ? 'text-green-700 dark:text-green-300' : 'text-text-primary',
                 )}
               >
                 {versionTitle}
               </span>
               {isActive && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-status-success-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-status-success">
-                  <span
-                    className="size-1.5 rounded-full bg-status-success-strong"
-                    aria-hidden="true"
-                  />
+                <span className="inline-flex items-center gap-1 rounded-full bg-green-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-700 dark:text-green-300">
+                  <span className="size-1.5 rounded-full bg-green-500" aria-hidden="true" />
                   {localize('com_ui_agent_version_current')}
                 </span>
               )}
@@ -164,14 +159,13 @@ export default function VersionItem({
                   description={localize('com_ui_agent_version_restore')}
                   side="left"
                   render={
-                    <Button
-                      variant="ghost"
-                      size="icon"
+                    <button
+                      type="button"
                       aria-label={localize('com_ui_agent_version_restore')}
-                      className="size-7 flex-shrink-0 rounded-lg border border-border-light text-text-secondary opacity-0 transition-all hover:border-border-medium focus:outline-none focus-visible:opacity-100 group-hover:opacity-100"
+                      className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-border-light text-text-secondary opacity-0 transition-all hover:border-border-medium hover:bg-surface-hover hover:text-text-primary focus:outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring-primary group-hover:opacity-100"
                     >
                       <RotateCcw className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-                    </Button>
+                    </button>
                   }
                 />
               </OGDialogTrigger>
@@ -206,7 +200,7 @@ export default function VersionItem({
                 selection={{
                   selectHandler: () => onRestore(index),
                   selectClasses:
-                    'bg-surface-submit hover:bg-surface-submit-hover text-text-on-status',
+                    'bg-green-600 hover:bg-green-700 dark:hover:bg-green-700 text-white',
                   selectText: localize('com_ui_agent_version_restore'),
                 }}
               />

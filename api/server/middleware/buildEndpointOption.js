@@ -1,11 +1,9 @@
 const {
   handleError,
   applyModelSpecPreset,
-  resolveModelSpecForEndpoint,
+  findModelSpecByName,
+  isModelSpecEndpointMatch,
   resolveModelSpecPromptPrefixVariables,
-  inspectContent,
-  extractChatContent,
-  contentFilterBlockResponse,
 } = require('@librechat/api');
 const { logger } = require('@librechat/data-schemas');
 const {
@@ -26,34 +24,6 @@ const buildFunction = {
   [EModelEndpoint.assistants]: assistants.buildOptions,
   [EModelEndpoint.azureAssistants]: azureAssistants.buildOptions,
 };
-
-/**
- * Inspects only the user-authored value substituted for `{{current_user}}`.
- * The surrounding model-spec prompt is administrator-authored, so treating the
- * entire resolved prompt as user provenance would incorrectly apply user
- * content policy to static deployment configuration.
- *
- * `extractChatContent` deliberately gives prompt prefixes both prompt and
- * agent-instruction semantics, preserving the source-specific field controls
- * for the exact value that becomes model-bound.
- *
- * @param {ServerRequest} req
- * @param {unknown} promptPrefixTemplate
- * @returns {import('@librechat/api').ProtectionFinding | null}
- */
-function inspectResolvedCurrentUser(req, promptPrefixTemplate) {
-  if (
-    typeof promptPrefixTemplate !== 'string' ||
-    !/{{\s*current_user\s*}}/i.test(promptPrefixTemplate) ||
-    !req.user?.name
-  ) {
-    return null;
-  }
-
-  return inspectContent(extractChatContent({ promptPrefix: String(req.user.name) }), {
-    filters: req.config?.filters,
-  });
-}
 
 async function buildEndpointOption(req, res, next) {
   const { endpoint, endpointType } = req.body;
@@ -78,7 +48,10 @@ async function buildEndpointOption(req, res, next) {
       defaultParamsEndpoint,
     });
   } catch (error) {
-    logger.error('Error parsing compact conversation', error);
+    logger.error(`Error parsing compact conversation for endpoint ${endpoint}`, error);
+    logger.debug({
+      'Error parsing compact conversation': { endpoint, endpointType, conversation: req.body },
+    });
     return handleError(res, { text: 'Error parsing conversation' });
   }
 
@@ -100,20 +73,14 @@ async function buildEndpointOption(req, res, next) {
       return handleError(res, { text: 'No model spec selected' });
     }
 
-    const modelSpecResolution = resolveModelSpecForEndpoint({
-      modelSpecs: { list },
-      spec,
-      endpoint,
-    });
-    if ('error' in modelSpecResolution) {
-      return handleError(res, {
-        text:
-          modelSpecResolution.error === 'invalid-model-spec'
-            ? 'Invalid model spec'
-            : 'Model spec mismatch',
-      });
+    const currentModelSpec = findModelSpecByName({ list }, spec);
+    if (!currentModelSpec) {
+      return handleError(res, { text: 'Invalid model spec' });
     }
-    const { modelSpec: currentModelSpec } = modelSpecResolution;
+
+    if (!isModelSpecEndpointMatch(currentModelSpec, endpoint)) {
+      return handleError(res, { text: 'Model spec mismatch' });
+    }
 
     try {
       const result = applyModelSpecPreset({
@@ -127,17 +94,15 @@ async function buildEndpointOption(req, res, next) {
       parsedBody = result.parsedBody;
       appliedModelSpecPrivateFields = result.appliedPrivateFields;
     } catch (error) {
-      logger.error('Error parsing model spec', error);
+      logger.error(`Error parsing model spec for endpoint ${endpoint}`, error);
       return handleError(res, { text: 'Error parsing model spec' });
     }
   } else if (parsedBody.spec && appConfig.modelSpecs?.list) {
-    const modelSpecResolution = resolveModelSpecForEndpoint({
-      modelSpecs: appConfig.modelSpecs,
-      spec: parsedBody.spec,
-      endpoint,
-    });
-    if ('modelSpec' in modelSpecResolution) {
-      const { modelSpec } = modelSpecResolution;
+    const modelSpec = findModelSpecByName(appConfig.modelSpecs, parsedBody.spec);
+    if (modelSpec) {
+      if (!isModelSpecEndpointMatch(modelSpec, endpoint)) {
+        return handleError(res, { text: 'Model spec mismatch' });
+      }
 
       try {
         const result = applyModelSpecPreset({
@@ -150,25 +115,18 @@ async function buildEndpointOption(req, res, next) {
         parsedBody = result.parsedBody;
         appliedModelSpecPrivateFields = result.appliedPrivateFields;
       } catch (error) {
-        logger.error('Error parsing model spec', error);
+        logger.error(`Error parsing model spec for endpoint ${endpoint}`, error);
         return handleError(res, { text: 'Error parsing model spec' });
       }
-    } else if (modelSpecResolution.error === 'model-spec-mismatch') {
-      return handleError(res, { text: 'Model spec mismatch' });
     }
   }
 
   if (!isAgents && appliedModelSpecPrivateFields.has('promptPrefix')) {
-    const promptPrefixTemplate = parsedBody.promptPrefix;
     parsedBody = resolveModelSpecPromptPrefixVariables(
       parsedBody,
       req.user,
       req.body.clientTimestamp,
     );
-    const finding = inspectResolvedCurrentUser(req, promptPrefixTemplate);
-    if (finding != null) {
-      return res.status(400).json(contentFilterBlockResponse(finding));
-    }
   }
 
   try {
@@ -189,7 +147,10 @@ async function buildEndpointOption(req, res, next) {
 
     next();
   } catch (error) {
-    logger.error('Error building endpoint option', error);
+    logger.error(
+      `Error building endpoint option for endpoint ${endpoint} with type ${endpointType}`,
+      error,
+    );
     return handleError(res, { text: 'Error building endpoint option' });
   }
 }

@@ -1,9 +1,9 @@
-import { memo, useId, useLayoutEffect, useMemo, useState } from 'react';
+import { memo, useId, useLayoutEffect } from 'react';
 import { Download } from 'lucide-react';
 import { useRecoilState } from 'recoil';
 import type { TAttachment, TFile, TAttachmentMetadata } from 'librechat-data-provider';
-import { fileToArtifact, TOOL_ARTIFACT_TYPES, toolArtifactKey } from '~/utils/artifacts';
 import Mermaid from '~/components/Messages/Content/Mermaid/Mermaid';
+import { toolArtifactKey } from '~/utils/artifacts';
 import { displayFilename } from './attachmentTypes';
 import { useAttachmentLink } from './LogLink';
 import { useLocalize } from '~/hooks';
@@ -16,9 +16,10 @@ interface ToolMermaidArtifactProps {
 }
 
 /**
- * Renders a code-execution-produced Mermaid artifact inline until the
- * user opens it in the Artifact panel. The compact card keeps the file
- * available in chat without rendering the same diagram twice.
+ * Renders a code-execution-produced mermaid artifact inline. Skips the
+ * sandpack/react path the side-panel artifacts use — the standalone
+ * Mermaid component has its own zoom/expand/code-toggle UI and we want
+ * to reuse it without bringing the bundler chrome along.
  *
  * Shares the `toolArtifactClaim` dedup atom with `ToolArtifactCard` so
  * the same `.mmd` file can't double-render across tool calls / messages.
@@ -29,10 +30,6 @@ const ToolMermaidArtifact = memo(({ attachment, text }: ToolMermaidArtifactProps
   const claimKey = useId();
   const [claim, setClaim] = useRecoilState(store.toolArtifactClaim(toolArtifactKey(file)));
   const isMyClaim = claim === claimKey;
-  /* Once the diagram collapses into its trigger row, that row carries the
-   * filename and the download itself, so this header would repeat both
-   * beside it. */
-  const [isRowMode, setIsRowMode] = useState(false);
 
   useLayoutEffect(() => {
     setClaim(claimKey);
@@ -48,11 +45,6 @@ const ToolMermaidArtifact = memo(({ attachment, text }: ToolMermaidArtifactProps
     user: file.user,
     source: file.source,
   });
-  const artifact = useMemo(
-    () =>
-      fileToArtifact({ ...attachment, text }, { preClassifiedType: TOOL_ARTIFACT_TYPES.MERMAID }),
-    [attachment, text],
-  );
 
   if (claim != null && !isMyClaim) {
     return null;
@@ -62,7 +54,7 @@ const ToolMermaidArtifact = memo(({ attachment, text }: ToolMermaidArtifactProps
 
   return (
     <div className="my-2 flex w-full flex-col gap-1">
-      {!isRowMode && (attachment.filename || attachment.filepath) && (
+      {(attachment.filename || attachment.filepath) && (
         <div className="flex items-center justify-between gap-2">
           {attachment.filename && (
             <div
@@ -92,26 +84,7 @@ const ToolMermaidArtifact = memo(({ attachment, text }: ToolMermaidArtifactProps
       )}
       {/* `id` is optional on Mermaid; pass only when we have a real file_id
           so the component generates a unique render target on its own. */}
-      {file.file_id ? (
-        <Mermaid
-          id={file.file_id}
-          artifact={artifact ?? undefined}
-          onDownload={attachment.filepath ? handleDownload : undefined}
-          onRowModeChange={setIsRowMode}
-          rowTitle={attachment.filename ? visibleFilename : undefined}
-        >
-          {text}
-        </Mermaid>
-      ) : (
-        <Mermaid
-          artifact={artifact ?? undefined}
-          onDownload={attachment.filepath ? handleDownload : undefined}
-          onRowModeChange={setIsRowMode}
-          rowTitle={attachment.filename ? visibleFilename : undefined}
-        >
-          {text}
-        </Mermaid>
-      )}
+      {file.file_id ? <Mermaid id={file.file_id}>{text}</Mermaid> : <Mermaid>{text}</Mermaid>}
     </div>
   );
 });

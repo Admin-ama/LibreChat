@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import { useRecoilValue } from 'recoil';
 import type { TAttachment, TFile } from 'librechat-data-provider';
 import { useSearchResultsByTurn } from './useSearchResultsByTurn';
-import { attachmentIdentity } from '~/utils/media';
 import store from '~/store';
 
 function fileKeyOf(attachment: TAttachment): string | undefined {
@@ -19,12 +18,29 @@ function agentIdOf(attachment: TAttachment): string | undefined {
 }
 
 /**
- * Stable identity for merging DB and live attachments. Shared with the
- * message renderer, which dedupes the same rows on the same key — two
- * definitions of what makes an attachment "the same one" is exactly the drift
- * that puts a file on screen twice in one surface and not at all in another.
+ * Stable identity for merging DB and live attachments: `file_id ?? filepath`
+ * scoped by `toolCallId` and `agentId` (sibling code calls can share a
+ * claimed file_id for the same filename, and handoff agents can repeat
+ * provider tool ids — each combination anchors its own card), else
+ * `type:toolCallId` for unkeyed tool artifacts like file_search citations.
+ * Undefined = no stable identity.
  */
-const attachmentKey = attachmentIdentity;
+function attachmentKey(attachment: TAttachment): string | undefined {
+  const { type } = attachment as { type?: string };
+  const toolCallId = toolCallIdOf(attachment);
+  const fileKey = fileKeyOf(attachment);
+  if (fileKey) {
+    if (toolCallId == null) {
+      return fileKey;
+    }
+    const agentId = agentIdOf(attachment);
+    return agentId ? `${fileKey}::${toolCallId}::${agentId}` : `${fileKey}::${toolCallId}`;
+  }
+  if (type != null && toolCallId != null) {
+    return `${type}:${toolCallId}`;
+  }
+  return undefined;
+}
 
 /**
  * Wildcard-tolerant match for the lifecycle overlay: a missing `toolCallId`

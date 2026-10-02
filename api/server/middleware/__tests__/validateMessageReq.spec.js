@@ -1,5 +1,5 @@
 jest.mock('~/models', () => ({
-  getConvoOwnership: jest.fn(),
+  getConvo: jest.fn(),
 }));
 
 jest.mock('@librechat/api', () => ({
@@ -18,7 +18,7 @@ jest.mock('@librechat/data-schemas', () => ({
 }));
 
 const validateMessageReq = require('../validateMessageReq');
-const { getConvoOwnership } = require('~/models');
+const { getConvo } = require('~/models');
 const { GenerationJobManager } = require('@librechat/api');
 const { logger } = require('@librechat/data-schemas');
 
@@ -52,7 +52,7 @@ describe('validateMessageReq', () => {
 
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith({ error: 'Conversation ID mismatch' });
-    expect(getConvoOwnership).not.toHaveBeenCalled();
+    expect(getConvo).not.toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -69,7 +69,7 @@ describe('validateMessageReq', () => {
 
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith({ error: 'Conversation ID mismatch' });
-    expect(getConvoOwnership).not.toHaveBeenCalled();
+    expect(getConvo).not.toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -81,54 +81,12 @@ describe('validateMessageReq', () => {
     };
     const res = createResponse();
     const next = jest.fn();
-    getConvoOwnership.mockResolvedValue({ conversationId: 'convo-owned', user: userId });
+    getConvo.mockResolvedValue({ conversationId: 'convo-owned', user: userId });
 
     await validateMessageReq(req, res, next);
 
-    expect(getConvoOwnership).toHaveBeenCalledWith(userId, 'convo-owned');
+    expect(getConvo).toHaveBeenCalledWith(userId, 'convo-owned');
     expect(next).toHaveBeenCalledTimes(1);
-  });
-
-  it('returns not found for a direct child-thread message read', async () => {
-    const req = {
-      method: 'GET',
-      params: { conversationId: 'child-convo', messageId: 'child-message' },
-      body: {},
-      user: { id: userId },
-    };
-    const res = createResponse();
-    const next = jest.fn();
-    getConvoOwnership.mockResolvedValue({
-      user: userId,
-      subagentThread: { parentConversationId: 'parent-convo' },
-    });
-
-    await validateMessageReq(req, res, next);
-
-    expect(res.status).toHaveBeenCalledWith(404);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Conversation not found' });
-    expect(next).not.toHaveBeenCalled();
-  });
-
-  it('returns not found for a HEAD request to a child thread', async () => {
-    const req = {
-      method: 'HEAD',
-      params: { conversationId: 'child-convo' },
-      body: {},
-      user: { id: userId },
-    };
-    const res = createResponse();
-    const next = jest.fn();
-    getConvoOwnership.mockResolvedValue({
-      user: userId,
-      subagentThread: { parentConversationId: 'parent-convo' },
-    });
-
-    await validateMessageReq(req, res, next);
-
-    expect(res.status).toHaveBeenCalledWith(404);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Conversation not found' });
-    expect(next).not.toHaveBeenCalled();
   });
 
   it('should allow message reads for an owned active generation job before the conversation is saved', async () => {
@@ -140,7 +98,7 @@ describe('validateMessageReq', () => {
     };
     const res = createResponse();
     const next = jest.fn();
-    getConvoOwnership.mockResolvedValue(null);
+    getConvo.mockResolvedValue(null);
     GenerationJobManager.getJob.mockResolvedValue({
       status: 'running',
       metadata: { userId, tenantId: 'tenant-a' },
@@ -162,7 +120,7 @@ describe('validateMessageReq', () => {
     };
     const res = createResponse();
     const next = jest.fn();
-    getConvoOwnership.mockResolvedValue(null);
+    getConvo.mockResolvedValue(null);
     GenerationJobManager.getJob.mockResolvedValue({
       status: 'running',
       metadata: { userId },
@@ -183,7 +141,7 @@ describe('validateMessageReq', () => {
     };
     const res = createResponse();
     const next = jest.fn();
-    getConvoOwnership.mockResolvedValue(null);
+    getConvo.mockResolvedValue(null);
     GenerationJobManager.getJob.mockResolvedValue({
       status: 'running',
       metadata: { userId: 'another-user' },
@@ -205,7 +163,7 @@ describe('validateMessageReq', () => {
     };
     const res = createResponse();
     const next = jest.fn();
-    getConvoOwnership.mockResolvedValue(null);
+    getConvo.mockResolvedValue(null);
     GenerationJobManager.getJob.mockResolvedValue({
       status: 'running',
       metadata: { userId, tenantId: 'tenant-b' },
@@ -227,7 +185,7 @@ describe('validateMessageReq', () => {
     };
     const res = createResponse();
     const next = jest.fn();
-    getConvoOwnership.mockResolvedValue(null);
+    getConvo.mockResolvedValue(null);
 
     await validateMessageReq(req, res, next);
 
@@ -247,7 +205,7 @@ describe('validateMessageReq', () => {
     const res = createResponse();
     const next = jest.fn();
     const error = new Error('job store unavailable');
-    getConvoOwnership.mockResolvedValue(null);
+    getConvo.mockResolvedValue(null);
     GenerationJobManager.getJob.mockRejectedValue(error);
 
     await validateMessageReq(req, res, next);
@@ -271,7 +229,7 @@ describe('validateMessageReq', () => {
     };
     const res = createResponse();
     const next = jest.fn();
-    getConvoOwnership.mockResolvedValue(null);
+    getConvo.mockResolvedValue(null);
 
     await validateMessageReq(req, res, next);
 

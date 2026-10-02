@@ -1,9 +1,12 @@
 import { Types } from 'mongoose';
-import { PrincipalType, SystemRoles } from 'librechat-data-provider';
+import { REFILL_INTERVAL_UNITS, PrincipalType, SystemRoles } from 'librechat-data-provider';
 import { logger, isValidObjectIdString } from '@librechat/data-schemas';
+import type { TAdminUserBalance } from 'librechat-data-provider';
 import type {
   IUser,
+  IBalance,
   IConfig,
+  IBalanceUpdate,
   AdminUserListItem,
   AdminUserSearchResult,
   UserDeleteResult,
@@ -15,6 +18,15 @@ import { parsePagination } from './pagination';
 
 const MAX_SEARCH_LENGTH = 200;
 
+const toAdminUserBalance = (userId: string, balance: IBalance | null): TAdminUserBalance => ({
+  userId,
+  tokenCredits: balance?.tokenCredits ?? 0,
+  autoRefillEnabled: balance?.autoRefillEnabled ?? false,
+  refillIntervalValue: balance?.refillIntervalValue ?? 30,
+  refillIntervalUnit: balance?.refillIntervalUnit ?? 'days',
+  refillAmount: balance?.refillAmount ?? 0,
+});
+
 const USER_LIST_FIELDS = '_id name username email avatar role provider createdAt updatedAt';
 
 export interface AdminUsersDeps {
@@ -24,31 +36,14 @@ export interface AdminUsersDeps {
     options?: { limit?: number; offset?: number; sort?: Record<string, 1 | -1> },
   ) => Promise<IUser[]>;
   countUsers: (filter?: FilterQuery<IUser>) => Promise<number>;
-  beginAgentTriggerUserDeletion: (
-    userId: string,
-    startedAt: Date,
-  ) => Promise<'acquired' | 'in_progress' | 'missing'>;
-  cancelAgentTriggerUserDeletion: (userId: string, startedAt: Date) => Promise<boolean>;
-  drainAgentTriggerDeliveriesForUser: (userId: string) => Promise<void>;
-  prepareAgentTriggerUserPurge: (
-    userId: string,
-    fenceStartedAt: Date,
-    tenantId?: string,
-  ) => Promise<void>;
-  cancelAgentTriggerUserPurge: (userId: string, fenceStartedAt: Date) => Promise<boolean>;
-  purgeAgentTriggerDeliveriesForUser: (userId: string) => Promise<void>;
-  revokeUserCodeEnvironmentWorkers?: (userId: string) => Promise<number>;
   /**
    * Thin data-layer delete — removes the User document only.
    * Full cascade of user-owned resources (conversations, messages, files, tokens, etc.)
    * is handled by `UserController.deleteUserController` in the self-delete flow.
-   * This admin endpoint fences durable triggers around the user commit and currently
-   * cascades Config and AclEntries.
+   * This admin endpoint currently cascades Config and AclEntries.
    * A future iteration should consolidate the full cascade into a shared service function.
    */
   deleteUserById: (userId: string) => Promise<UserDeleteResult>;
-  deleteUserCodeEnvironments: (userId: string | Types.ObjectId) => Promise<number>;
-  invalidateCodeEnvironmentConfigCache: (tenantId?: string) => Promise<void>;
   deleteConfig: (
     principalType: PrincipalType,
     principalId: string | Types.ObjectId,
@@ -57,28 +52,27 @@ export interface AdminUsersDeps {
     principalType: PrincipalType;
     principalId: string | Types.ObjectId;
   }) => Promise<void>;
+  getUserById: (userId: string, fieldsToSelect?: string | string[] | null) => Promise<IUser | null>;
+  findBalanceByUser: (user: string) => Promise<IBalance | null>;
+  upsertBalanceFields: (user: string, fields: IBalanceUpdate) => Promise<IBalance | null>;
 }
 
 export function createAdminUsersHandlers(deps: AdminUsersDeps): {
   listUsers: (req: ServerRequest, res: Response) => Promise<Response>;
   searchUsers: (req: ServerRequest, res: Response) => Promise<Response>;
   deleteUser: (req: ServerRequest, res: Response) => Promise<Response>;
+  getUserBalance: (req: ServerRequest, res: Response) => Promise<Response>;
+  setUserBalance: (req: ServerRequest, res: Response) => Promise<Response>;
 } {
   const {
     findUsers,
     countUsers,
-    beginAgentTriggerUserDeletion,
-    cancelAgentTriggerUserDeletion,
-    drainAgentTriggerDeliveriesForUser,
-    prepareAgentTriggerUserPurge,
-    cancelAgentTriggerUserPurge,
-    purgeAgentTriggerDeliveriesForUser,
-    revokeUserCodeEnvironmentWorkers,
-    deleteUserCodeEnvironments,
     deleteUserById,
-    invalidateCodeEnvironmentConfigCache,
     deleteConfig,
     deleteAclEntries,
+    getUserById,
+    findBalanceByUser,
+    upsertBalanceFields,
   } = deps;
 
   async function listUsersHandler(req: ServerRequest, res: Response) {
@@ -158,13 +152,8 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
   }
 
   async function deleteUserHandler(req: ServerRequest, res: Response) {
-    let targetUserId: string | undefined;
-    let triggerDeletionFence: Date | undefined;
-    let userDeleted = false;
-
     try {
       const { id } = req.params as { id: string };
-      targetUserId = id;
 
       if (!isValidObjectIdString(id)) {
         return res.status(400).json({ error: 'Invalid user ID format' });
@@ -175,7 +164,7 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
         return res.status(403).json({ error: 'Cannot delete your own account' });
       }
 
-      const [targetUser] = await findUsers({ _id: id }, 'role tenantId', { limit: 1 });
+      const [targetUser] = await findUsers({ _id: id }, 'role', { limit: 1 });
       if (targetUser?.role === SystemRoles.ADMIN) {
         const adminCount = await countUsers({ role: SystemRoles.ADMIN });
         if (adminCount <= 1) {
@@ -183,36 +172,11 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
         }
       }
 
-      triggerDeletionFence = new Date();
-      const fenceState = await beginAgentTriggerUserDeletion(id, triggerDeletionFence);
-      if (fenceState === 'in_progress') {
-        triggerDeletionFence = undefined;
-        return res.status(409).json({ error: 'User deletion is already in progress' });
-      }
-      if (fenceState === 'missing') {
-        triggerDeletionFence = undefined;
-        return res.status(404).json({ error: 'User not found' });
-      }
-      await prepareAgentTriggerUserPurge(id, triggerDeletionFence, targetUser?.tenantId);
-      await drainAgentTriggerDeliveriesForUser(id);
-
       const result = await deleteUserById(id);
 
       if (result.deletedCount === 0) {
-        await cancelAgentTriggerUserPurge(id, triggerDeletionFence);
-        await cancelAgentTriggerUserDeletion(id, triggerDeletionFence);
-        triggerDeletionFence = undefined;
         return res.status(404).json({ error: 'User not found' });
       }
-      userDeleted = true;
-      let codeEnvironmentCleanupSafe = true;
-      try {
-        await revokeUserCodeEnvironmentWorkers?.(id);
-      } catch (error) {
-        codeEnvironmentCleanupSafe = false;
-        logger.error('[adminUsers] failed to revoke code environment workers:', id, error);
-      }
-      await purgeAgentTriggerDeliveriesForUser(id);
 
       if (targetUser?.role === SystemRoles.ADMIN) {
         const remaining = await countUsers({ role: SystemRoles.ADMIN });
@@ -227,7 +191,6 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
       const objectId = new Types.ObjectId(id);
       const cleanupResults = await Promise.allSettled([
         deleteConfig(PrincipalType.USER, id),
-        ...(codeEnvironmentCleanupSafe ? [deleteUserCodeEnvironments(objectId)] : []),
         deleteAclEntries({ principalType: PrincipalType.USER, principalId: objectId }),
       ]);
       for (const r of cleanupResults) {
@@ -235,26 +198,97 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
           logger.error('[adminUsers] cascade cleanup failed for user:', id, r.reason);
         }
       }
-      await invalidateCodeEnvironmentConfigCache(targetUser?.tenantId).catch((error: unknown) => {
-        logger.error('[adminUsers] code environment cache invalidation failed:', id, error);
-      });
 
       return res.status(200).json({ message: result.message || 'User deleted successfully' });
     } catch (error) {
-      if (targetUserId != null && triggerDeletionFence != null && !userDeleted) {
-        try {
-          await cancelAgentTriggerUserPurge(targetUserId, triggerDeletionFence);
-        } catch (purgeFenceError) {
-          logger.error('[adminUsers] failed to disarm trigger purge recovery:', purgeFenceError);
-        }
-        try {
-          await cancelAgentTriggerUserDeletion(targetUserId, triggerDeletionFence);
-        } catch (fenceError) {
-          logger.error('[adminUsers] failed to release trigger deletion fence:', fenceError);
-        }
-      }
       logger.error('[adminUsers] deleteUser error:', error);
       return res.status(500).json({ error: 'Failed to delete user' });
+    }
+  }
+
+  async function getUserBalanceHandler(req: ServerRequest, res: Response) {
+    try {
+      const { id } = req.params as { id: string };
+
+      if (!isValidObjectIdString(id)) {
+        return res.status(400).json({ error: 'Invalid user ID format' });
+      }
+
+      const targetUser = await getUserById(id, '_id');
+      if (!targetUser) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const balance = await findBalanceByUser(id);
+      return res.status(200).json(toAdminUserBalance(id, balance));
+    } catch (error) {
+      logger.error('[adminUsers] getUserBalance error:', error);
+      return res.status(500).json({ error: 'Failed to get user balance' });
+    }
+  }
+
+  async function setUserBalanceHandler(req: ServerRequest, res: Response) {
+    try {
+      const { id } = req.params as { id: string };
+      const body = req.body as Partial<TAdminUserBalance>;
+
+      if (!isValidObjectIdString(id)) {
+        return res.status(400).json({ error: 'Invalid user ID format' });
+      }
+
+      const targetUser = await getUserById(id, '_id');
+      if (!targetUser) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      if (typeof body.tokenCredits !== 'number' || body.tokenCredits < 0) {
+        return res.status(400).json({ error: '`tokenCredits` must be a non-negative number' });
+      }
+      if (
+        body.refillAmount !== undefined &&
+        (typeof body.refillAmount !== 'number' || body.refillAmount < 0)
+      ) {
+        return res.status(400).json({ error: '`refillAmount` must be a non-negative number' });
+      }
+      if (
+        body.refillIntervalValue !== undefined &&
+        (typeof body.refillIntervalValue !== 'number' || body.refillIntervalValue <= 0)
+      ) {
+        return res.status(400).json({ error: '`refillIntervalValue` must be a positive number' });
+      }
+      if (
+        body.refillIntervalUnit !== undefined &&
+        !REFILL_INTERVAL_UNITS.includes(body.refillIntervalUnit)
+      ) {
+        return res.status(400).json({
+          error: `\`refillIntervalUnit\` must be one of: ${REFILL_INTERVAL_UNITS.join(', ')}`,
+        });
+      }
+      if (body.autoRefillEnabled !== undefined && typeof body.autoRefillEnabled !== 'boolean') {
+        return res.status(400).json({ error: '`autoRefillEnabled` must be a boolean' });
+      }
+
+      const fields: IBalanceUpdate = {
+        tokenCredits: body.tokenCredits,
+        ...(body.autoRefillEnabled !== undefined && { autoRefillEnabled: body.autoRefillEnabled }),
+        ...(body.autoRefillEnabled === true && { lastRefill: new Date() }),
+        ...(body.refillIntervalValue !== undefined && {
+          refillIntervalValue: body.refillIntervalValue,
+        }),
+        ...(body.refillIntervalUnit !== undefined && {
+          refillIntervalUnit: body.refillIntervalUnit,
+        }),
+        ...(body.refillAmount !== undefined && { refillAmount: body.refillAmount }),
+      };
+
+      const balance = await upsertBalanceFields(id, fields);
+      logger.info(
+        `[adminUsers] balance updated for user ${id} by admin ${req.user?._id ?? req.user?.id}`,
+      );
+      return res.status(200).json(toAdminUserBalance(id, balance));
+    } catch (error) {
+      logger.error('[adminUsers] setUserBalance error:', error);
+      return res.status(500).json({ error: 'Failed to update user balance' });
     }
   }
 
@@ -262,5 +296,7 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
     listUsers: listUsersHandler,
     searchUsers: searchUsersHandler,
     deleteUser: deleteUserHandler,
+    getUserBalance: getUserBalanceHandler,
+    setUserBalance: setUserBalanceHandler,
   };
 }

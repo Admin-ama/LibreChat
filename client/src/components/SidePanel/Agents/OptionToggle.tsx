@@ -1,4 +1,4 @@
-import { Button, TooltipAnchor } from '@librechat/client';
+import { TooltipAnchor } from '@librechat/client';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '~/utils';
 
@@ -8,11 +8,7 @@ interface OptionToggleProps {
   label: string;
   /** Defaults to `label` (bulk toggles use the same text for both). */
   tooltip?: string;
-  /**
-   * Semantic series border and text color, including the hover text, applied
-   * when pressed. The border is the non-color cue: pressed and unpressed differ
-   * by its presence, not only by hue.
-   */
+  /** Text color applied when pressed (e.g. `text-amber-500`). */
   activeClass: string;
   onToggle: () => void;
   size?: 'sm' | 'md';
@@ -39,45 +35,30 @@ export default function OptionToggle({
   size = 'sm',
   disabled = false,
 }: OptionToggleProps) {
-  /**
-   * Pressed and disabled compose rather than override each other: a tool the
-   * user switched to programmatic-only keeps its stored Intent state, and
-   * `aria-pressed` keeps reporting it, so the control has to keep looking
-   * pressed. Collapsing to the unpressed treatment would hide a setting that
-   * becomes active again the moment programmatic mode is lifted.
-   */
-  let stateClass: string;
-  if (pressed) {
-    /** `surface-tertiary` is one of the surfaces the series scale is held to
-     *  3:1 on; the ghost `surface-hover` drops some slots below it in light. */
-    stateClass = cn(
-      activeClass,
-      disabled ? 'cursor-not-allowed opacity-60 hover:bg-transparent' : 'hover:bg-surface-tertiary',
-    );
-  } else if (disabled) {
-    stateClass =
-      'cursor-not-allowed border-transparent text-text-tertiary opacity-60 hover:bg-transparent hover:text-text-tertiary';
-  } else {
-    stateClass =
-      'border-transparent text-text-secondary hover:bg-surface-hover hover:text-text-secondary';
-  }
-
   return (
     <TooltipAnchor
       description={tooltip ?? label}
       side="top"
       render={
-        <Button
-          variant="ghost"
-          size="icon"
+        <button
+          type="button"
           onClick={disabled ? undefined : onToggle}
           aria-pressed={pressed}
           aria-label={label}
           aria-disabled={disabled || undefined}
-          className={cn('rounded-md border', size === 'sm' ? 'size-6' : 'size-7', stateClass)}
+          className={cn(
+            'flex items-center justify-center rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary',
+            size === 'sm' ? 'size-6' : 'size-7',
+            disabled
+              ? 'cursor-not-allowed text-text-tertiary opacity-60'
+              : cn(
+                  'hover:bg-surface-hover',
+                  pressed ? activeClass : 'text-text-secondary hover:text-text-primary',
+                ),
+          )}
         >
           <Icon className="size-4" aria-hidden="true" />
-        </Button>
+        </button>
       }
     />
   );

@@ -31,10 +31,6 @@ describe('RUM proxy routes', () => {
     mockProxyRumRequest.mockClear();
   });
 
-  afterEach(() => {
-    delete process.env.RUM_PROXY_AUTHORIZATION;
-  });
-
   it('returns 404 before auth and proxying when RUM proxy mode is disabled', async () => {
     mockIsRumProxyEnabled.mockReturnValue(false);
 
@@ -49,44 +45,18 @@ describe('RUM proxy routes', () => {
     expect(mockProxyRumRequest).not.toHaveBeenCalled();
   });
 
-  it.each(['traces', 'logs'])(
-    'passes server authorization to the %s proxy after auth',
-    async (signal) => {
-      process.env.RUM_PROXY_AUTHORIZATION = 'server-only-ingestion-key';
-      mockIsRumProxyEnabled.mockReturnValue(true);
+  it('authenticates and proxies when RUM proxy mode is enabled', async () => {
+    mockIsRumProxyEnabled.mockReturnValue(true);
 
-      const response = await request(app)
-        .post(`/api/rum/v1/${signal}`)
-        .set('Content-Type', 'application/x-protobuf')
-        .send(Buffer.from('payload'));
+    const response = await request(app)
+      .post('/api/rum/v1/traces')
+      .set('Content-Type', 'application/x-protobuf')
+      .send(Buffer.from('payload'));
 
-      expect(response.status).toBe(202);
-      expect(mockRequireRumProxyAuth).toHaveBeenCalledTimes(1);
-      expect(mockProxyRumRequest).toHaveBeenCalledTimes(1);
-      expect(mockProxyRumRequest).toHaveBeenCalledWith(
-        expect.any(Object),
-        expect.any(Object),
-        'server-only-ingestion-key',
-      );
-    },
-  );
-
-  it.each(['traces', 'logs'])(
-    'does not export %s when session authentication fails',
-    async (signal) => {
-      process.env.RUM_PROXY_AUTHORIZATION = 'server-only-ingestion-key';
-      mockIsRumProxyEnabled.mockReturnValue(true);
-      mockRequireRumProxyAuth.mockImplementationOnce((_req, res) => res.status(401).end());
-
-      const response = await request(app)
-        .post(`/api/rum/v1/${signal}`)
-        .set('Content-Type', 'application/x-protobuf')
-        .send(Buffer.from('payload'));
-
-      expect(response.status).toBe(401);
-      expect(mockProxyRumRequest).not.toHaveBeenCalled();
-    },
-  );
+    expect(response.status).toBe(202);
+    expect(mockRequireRumProxyAuth).toHaveBeenCalledTimes(1);
+    expect(mockProxyRumRequest).toHaveBeenCalledTimes(1);
+  });
 
   it('uses RUM-specific auth for logs as well as traces', async () => {
     mockIsRumProxyEnabled.mockReturnValue(true);

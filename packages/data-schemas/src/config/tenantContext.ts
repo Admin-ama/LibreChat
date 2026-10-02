@@ -4,8 +4,6 @@ export interface TenantContext {
   tenantId?: string;
   userId?: string;
   requestId?: string;
-  requestMethod?: string;
-  requestPath?: string;
 }
 
 /** Sentinel value for deliberate cross-tenant system operations */
@@ -34,26 +32,13 @@ export function getRequestId(): string | undefined {
   return tenantStorage.getStore()?.requestId;
 }
 
-/** Returns the safe request method from async context, or undefined if none is set */
-export function getRequestMethod(): string | undefined {
-  return tenantStorage.getStore()?.requestMethod;
-}
-
-/** Returns the safe request path from async context, or undefined if none is set */
-export function getRequestPath(): string | undefined {
-  return tenantStorage.getStore()?.requestPath;
-}
-
 /**
  * Runs a function in an explicit cross-tenant system context (bypasses tenant filtering).
  * The callback MUST be async — sync callbacks returning Mongoose thenables will lose context.
  */
 export function runAsSystem<T>(fn: () => Promise<T>): Promise<T> {
-  const { requestId, userId, requestMethod, requestPath } = tenantStorage.getStore() ?? {};
-  return tenantStorage.run(
-    { tenantId: SYSTEM_TENANT_ID, requestId, userId, requestMethod, requestPath },
-    fn,
-  );
+  const { requestId, userId } = tenantStorage.getStore() ?? {};
+  return tenantStorage.run({ tenantId: SYSTEM_TENANT_ID, requestId, userId }, fn);
 }
 
 /**

@@ -13,8 +13,6 @@ import { fetchJson, getAccessToken, requestJson, sendMessage } from './helpers';
 const DEPLOYMENT_SKILL_NAME = 'e2e-deployment-skill';
 const SKILL_ASSERTION_MARKER = 'E2E_ASSERT_SKILLS:';
 const SKILL_ASSERTION_FINAL_TEXT = 'E2E skill assertion passed';
-const SKILL_ASSERTION_AUTHORING_ONLY_TEXT = `${SKILL_ASSERTION_FINAL_TEXT}: authoring-only`;
-const SKILL_ASSERTION_NO_SKILLS_TEXT = `${SKILL_ASSERTION_FINAL_TEXT}: none`;
 const MANUAL_SKILL_ASSERTION_MARKER = 'E2E_ASSERT_MANUAL_SKILL:';
 const MANUAL_SKILL_ASSERTION_FINAL_TEXT = 'E2E manual skill assertion passed';
 const SKILL_TOOL_INVOCATION_MARKER = 'E2E_INVOKE_SKILL:';
@@ -37,14 +35,12 @@ type SkillSummary = {
 type SkillAgentDetail = AgentDetail & {
   skills?: string[];
   skills_enabled?: boolean;
-  skills_scope?: string;
 };
 
 type AgentSkillPayload = {
   name?: string;
   skills?: string[];
   skills_enabled?: boolean;
-  skills_scope?: string;
   manualSkills?: string[];
 };
 
@@ -142,12 +138,7 @@ async function settleCleanup(tasks: Promise<unknown>[]): Promise<void> {
 }
 
 async function openSkillsDialog(page: Page, form: Locator): Promise<Locator> {
-  const selectedSkillsRadio = form.getByRole('radio', { name: 'Selected', exact: true });
-  if ((await selectedSkillsRadio.getAttribute('aria-checked')) !== 'true') {
-    await selectedSkillsRadio.click();
-    await expect(selectedSkillsRadio).toHaveAttribute('aria-checked', 'true');
-  }
-  await form.getByRole('button', { name: /Add skill/ }).click();
+  await form.getByRole('button', { name: 'Add Skills', exact: true }).click();
   const dialog = page
     .getByRole('dialog')
     .filter({ hasText: 'Browse and add skills to your agent.' });
@@ -414,7 +405,7 @@ test.describe('Agent Builder skills', () => {
       const deploymentRow = form.locator('li').filter({ hasText: DEPLOYMENT_SKILL_NAME });
       await expect(deploymentRow).toHaveCount(1);
       await deploymentRow.hover();
-      await deploymentRow.getByRole('button', { name: /^Remove / }).click();
+      await deploymentRow.getByRole('button', { name: 'Remove from agent' }).click();
       await expect(form.getByText(DEPLOYMENT_SKILL_NAME, { exact: true })).toBeHidden();
 
       const updateResponsePromise = waitForAgentMutation(page, 'PATCH', createdAgentId);
@@ -444,32 +435,25 @@ test.describe('Agent Builder skills', () => {
       const finalSkillRow = form.locator('li').filter({ hasText: inlineSkillName });
       await expect(finalSkillRow).toHaveCount(1);
       await finalSkillRow.hover();
-      await finalSkillRow.getByRole('button', { name: /^Remove / }).click();
+      await finalSkillRow.getByRole('button', { name: 'Remove from agent' }).click();
       await expect(form.getByText(inlineSkillName, { exact: true })).toBeHidden();
 
-      /** Emptying the allowlist stays in Selected: the mode is explicit now, so
-       *  removing the last skill no longer infers Off. Only `skills` is written,
-       *  and an explicit Selected with nothing selected resolves to no skills at
-       *  runtime, which the picker and the run below both confirm. Skills stay
-       *  enabled, so that run can still author one: it keeps the `skill` tool in
-       *  its authoring variant with nothing in the catalog, which is what
-       *  separates this from the Off agent below. */
-      const emptiedResponsePromise = waitForAgentMutation(page, 'PATCH', createdAgentId);
+      const disableResponsePromise = waitForAgentMutation(page, 'PATCH', createdAgentId);
       await form.getByRole('button', { name: 'Save', exact: true }).click();
-      const emptiedResponse = await emptiedResponsePromise;
-      expect(emptiedResponse.status(), await emptiedResponse.text()).toBe(200);
-      expect(emptiedResponse.request().postDataJSON()).toMatchObject({
+      const disableResponse = await disableResponsePromise;
+      expect(disableResponse.status(), await disableResponse.text()).toBe(200);
+      expect(disableResponse.request().postDataJSON()).toMatchObject({
         skills: [],
+        skills_enabled: false,
       });
 
-      const emptiedAgent = await fetchJson<SkillAgentDetail>(
+      const disabledAgent = await fetchJson<SkillAgentDetail>(
         page,
         `/api/agents/${encodeURIComponent(createdAgentId)}/expanded`,
         token,
       );
-      expect(emptiedAgent.skills).toEqual([]);
-      expect(emptiedAgent.skills_enabled).toBe(true);
-      expect(emptiedAgent.skills_scope).toBe('selected');
+      expect(disabledAgent.skills).toEqual([]);
+      expect(disabledAgent.skills_enabled).toBe(false);
 
       form = await openAgentBuilder(page);
       await selectAgent(page, form, agentName);
@@ -482,13 +466,13 @@ test.describe('Agent Builder skills', () => {
       await expectSkillAbsentFromPicker(page, disabledPickerSearch, inlineSkillName);
       await closeSkillPicker(page, disabledPickerSearch);
 
-      const emptiedRuntimeResponse = await sendMessage(
+      const disabledRuntimeResponse = await sendMessage(
         page,
         `${SKILL_ASSERTION_MARKER}!${DEPLOYMENT_SKILL_NAME},!${inlineSkillName}`,
       );
-      expect(emptiedRuntimeResponse.ok()).toBeTruthy();
+      expect(disabledRuntimeResponse.ok()).toBeTruthy();
       await expect(
-        page.getByTestId('messages-view').getByText(SKILL_ASSERTION_AUTHORING_ONLY_TEXT),
+        page.getByTestId('messages-view').getByText(`${SKILL_ASSERTION_FINAL_TEXT}: none`),
       ).toBeVisible({ timeout: 30000 });
     } finally {
       await settleCleanup([
@@ -519,19 +503,11 @@ test.describe('Agent Builder skills', () => {
       await selectMockModel(page, true);
       form = page.getByRole('form', { name: 'Agent configuration form' });
 
-      const offSkillsRadio = form.getByRole('radio', { name: 'Off', exact: true });
-      const allSkillsRadio = form.getByRole('radio', { name: 'All', exact: true });
-      await expect(offSkillsRadio).toHaveAttribute('aria-checked', 'true');
-      await expect(allSkillsRadio).toHaveAttribute('aria-checked', 'false');
-      await allSkillsRadio.click();
-      await expect(allSkillsRadio).toHaveAttribute('aria-checked', 'true');
-      await expect(offSkillsRadio).toHaveAttribute('aria-checked', 'false');
-      const allSkillsSummary = form.getByRole('button', { name: /\d+ skills? available/ });
-      await expect(allSkillsSummary).toBeVisible();
-      await expect(allSkillsSummary).toHaveAttribute('aria-expanded', 'false');
-      // The Selected body stays mounted so mode switches tween; it is inert and
-      // aria-hidden while All is active, so its Add row must not be reachable.
-      await expect(form.getByRole('button', { name: /Add skill/ })).toBeHidden();
+      const useAllSwitch = form.getByRole('switch', { name: 'Use all skills' });
+      await expect(useAllSwitch).toHaveAttribute('aria-checked', 'false');
+      await useAllSwitch.click();
+      await expect(useAllSwitch).toHaveAttribute('aria-checked', 'true');
+      await expect(form.getByRole('button', { name: 'Add Skills', exact: true })).toHaveCount(0);
 
       const createResponsePromise = waitForAgentMutation(page, 'POST');
       await form.getByRole('button', { name: 'Create', exact: true }).click();
@@ -541,18 +517,15 @@ test.describe('Agent Builder skills', () => {
       const createdAgent = (await createResponse.json()) as SkillAgentDetail;
       createdAgentId = createdAgent.id;
       const createPayload = createResponse.request().postDataJSON() as AgentSkillPayload;
-      /** All writes the mode outright and deliberately leaves `skills` alone, so
-       *  a fresh agent sends no allowlist at all rather than an empty one. That
-       *  is what lets a later return to Selected restore previous picks. */
       expect(createPayload).toMatchObject({
+        skills: [],
         skills_enabled: true,
-        skills_scope: 'all',
       });
 
       expect(createdAgent).toMatchObject({
         id: createdAgentId,
+        skills: [],
         skills_enabled: true,
-        skills_scope: 'all',
       });
 
       const persistedAgent = (await waitForPersistedAgent(
@@ -560,17 +533,16 @@ test.describe('Agent Builder skills', () => {
         agentName,
         agentDescription,
       )) as SkillAgentDetail;
+      expect(persistedAgent.skills).toEqual([]);
       expect(persistedAgent.skills_enabled).toBe(true);
-      expect(persistedAgent.skills_scope).toBe('all');
 
       form = await openAgentBuilder(page);
       await selectAgent(page, form, agentName);
-      await expect(form.getByRole('radio', { name: 'All', exact: true })).toHaveAttribute(
+      await expect(form.getByRole('switch', { name: 'Use all skills' })).toHaveAttribute(
         'aria-checked',
         'true',
       );
-      await expect(form.getByRole('button', { name: /\d+ skills? available/ })).toBeVisible();
-      await expect(form.getByRole('button', { name: /Add skill/ })).toBeHidden();
+      await expect(form.getByRole('button', { name: 'Add Skills', exact: true })).toHaveCount(0);
 
       futureSkill = await createInlineSkill(page, token, futureSkillName);
       await form.getByRole('button', { name: 'Select Agent' }).click();
@@ -594,20 +566,18 @@ test.describe('Agent Builder skills', () => {
 
       form = await openAgentBuilder(page);
       await selectAgent(page, form, agentName);
-      const persistedOffSkillsRadio = form.getByRole('radio', { name: 'Off', exact: true });
-      await persistedOffSkillsRadio.click();
-      await expect(persistedOffSkillsRadio).toHaveAttribute('aria-checked', 'true');
-      await expect(form.getByRole('button', { name: /Add skill/ })).toBeHidden();
+      const persistedUseAllSwitch = form.getByRole('switch', { name: 'Use all skills' });
+      await persistedUseAllSwitch.click();
+      await expect(persistedUseAllSwitch).toHaveAttribute('aria-checked', 'false');
+      await expect(form.getByRole('button', { name: 'Add Skills', exact: true })).toBeVisible();
 
       const updateResponsePromise = waitForAgentMutation(page, 'PATCH', createdAgentId);
       await form.getByRole('button', { name: 'Save', exact: true }).click();
       const updateResponse = await updateResponsePromise;
       expect(updateResponse.status(), await updateResponse.text()).toBe(200);
-      /** Off writes the mode and both capability flags, and still leaves the
-       *  allowlist untouched. */
       expect(updateResponse.request().postDataJSON()).toMatchObject({
+        skills: [],
         skills_enabled: false,
-        skills_scope: 'none',
       });
 
       const disabledAgent = await fetchJson<SkillAgentDetail>(
@@ -615,16 +585,16 @@ test.describe('Agent Builder skills', () => {
         `/api/agents/${encodeURIComponent(createdAgentId)}/expanded`,
         token,
       );
+      expect(disabledAgent.skills).toEqual([]);
       expect(disabledAgent.skills_enabled).toBe(false);
-      expect(disabledAgent.skills_scope).toBe('none');
 
       form = await openAgentBuilder(page);
       await selectAgent(page, form, agentName);
-      await expect(form.getByRole('radio', { name: 'Off', exact: true })).toHaveAttribute(
+      await expect(form.getByRole('switch', { name: 'Use all skills' })).toHaveAttribute(
         'aria-checked',
-        'true',
+        'false',
       );
-      await expect(form.getByRole('button', { name: /Add skill/ })).toBeHidden();
+      await expect(form.getByRole('button', { name: 'Add Skills', exact: true })).toBeVisible();
 
       await form.getByRole('button', { name: 'Select Agent' }).click();
       const disabledPickerSearch = await openSkillPicker(page);
@@ -639,10 +609,8 @@ test.describe('Agent Builder skills', () => {
         ].join('\n'),
       );
       expect(disabledRuntimeResponse.ok()).toBeTruthy();
-      /** Off turns authoring off with invocation, so this run gets no `skill`
-       *  tool at all — unlike the emptied-allowlist run above. */
       await expect(
-        page.getByTestId('messages-view').getByText(SKILL_ASSERTION_NO_SKILLS_TEXT),
+        page.getByTestId('messages-view').getByText(`${SKILL_ASSERTION_FINAL_TEXT}: none`),
       ).toBeVisible({ timeout: 30000 });
     } finally {
       await settleCleanup([

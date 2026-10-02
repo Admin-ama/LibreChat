@@ -1,16 +1,13 @@
 import { logger } from '@librechat/data-schemas';
 import type { TokenMethods, IUser } from '@librechat/data-schemas';
-import type { ParsedServerConfig, UserConnectionContext } from '~/mcp/types';
 import type { MCPOAuthTokens } from './types';
 import { MCPServersRegistry } from '~/mcp/registry/MCPServersRegistry';
 import { OAuthReconnectionTracker } from './OAuthReconnectionTracker';
-import { requiresEphemeralUserConnection } from '~/mcp/utils';
 import { FlowStateManager } from '~/flow/manager';
 import { MCPManager } from '~/mcp/MCPManager';
 
 const DEFAULT_CONNECTION_TIMEOUT_MS = 10_000; // ms
 const RECONNECT_STAGGER_MS = 500; // ms between each server reconnection
-type ReconnectOutcome = 'connected' | 'deferred' | 'failed';
 
 export class OAuthReconnectionManager {
   private static instance: OAuthReconnectionManager | null = null;
@@ -18,12 +15,6 @@ export class OAuthReconnectionManager {
   protected readonly flowManager: FlowStateManager<MCPOAuthTokens | null>;
   protected readonly tokenMethods: TokenMethods;
   private readonly mcpManager: MCPManager | null;
-  private readonly onOAuthCredentialsChanged?: (scope: {
-    userId: string;
-    serverName: string;
-  }) => Promise<void>;
-
-  private readonly onOAuthCredentialsChanging?: UserConnectionContext['onOAuthCredentialsChanging'];
 
   private readonly reconnectionsTracker: OAuthReconnectionTracker;
 
@@ -38,20 +29,12 @@ export class OAuthReconnectionManager {
     flowManager: FlowStateManager<MCPOAuthTokens | null>,
     tokenMethods: TokenMethods,
     reconnections?: OAuthReconnectionTracker,
-    onOAuthCredentialsChanged?: (scope: { userId: string; serverName: string }) => Promise<void>,
-    onOAuthCredentialsChanging?: UserConnectionContext['onOAuthCredentialsChanging'],
   ): Promise<OAuthReconnectionManager> {
     if (OAuthReconnectionManager.instance != null) {
       throw new Error('OAuthReconnectionManager already initialized');
     }
 
-    const manager = new OAuthReconnectionManager(
-      flowManager,
-      tokenMethods,
-      reconnections,
-      onOAuthCredentialsChanged,
-      onOAuthCredentialsChanging,
-    );
+    const manager = new OAuthReconnectionManager(flowManager, tokenMethods, reconnections);
     OAuthReconnectionManager.instance = manager;
 
     return manager;
@@ -61,14 +44,10 @@ export class OAuthReconnectionManager {
     flowManager: FlowStateManager<MCPOAuthTokens | null>,
     tokenMethods: TokenMethods,
     reconnections?: OAuthReconnectionTracker,
-    onOAuthCredentialsChanged?: (scope: { userId: string; serverName: string }) => Promise<void>,
-    onOAuthCredentialsChanging?: UserConnectionContext['onOAuthCredentialsChanging'],
   ) {
     this.flowManager = flowManager;
     this.tokenMethods = tokenMethods;
     this.reconnectionsTracker = reconnections ?? new OAuthReconnectionTracker();
-    this.onOAuthCredentialsChanged = onOAuthCredentialsChanged;
-    this.onOAuthCredentialsChanging = onOAuthCredentialsChanging;
 
     try {
       this.mcpManager = MCPManager.getInstance();
@@ -83,14 +62,7 @@ export class OAuthReconnectionManager {
     return this.reconnectionsTracker.isStillReconnecting(userId, serverName);
   }
 
-  /**
-   * Reconnects the user's eligible OAuth servers.
-   * @param configServers Tenant-scoped Config-tier candidates used to resolve effective overlays.
-   */
-  public async reconnectServers(
-    userId: string,
-    configServers?: Record<string, ParsedServerConfig>,
-  ): Promise<void> {
+  public async reconnectServers(userId: string): Promise<void> {
     // Check if MCPManager is available
     if (this.mcpManager == null) {
       logger.warn(
@@ -101,7 +73,7 @@ export class OAuthReconnectionManager {
 
     // 1. derive the servers to reconnect
     const serversToReconnect = [];
-    for (const serverName of await MCPServersRegistry.getInstance().getOAuthServers(userId)) {
+    for (const serverName of await MCPServersRegistry.getInstance().getOAuthServers()) {
       const canReconnect = await this.canReconnect(userId, serverName);
       if (canReconnect) {
         serversToReconnect.push(serverName);
@@ -117,12 +89,9 @@ export class OAuthReconnectionManager {
     for (let i = 0; i < serversToReconnect.length; i++) {
       const serverName = serversToReconnect[i];
       if (i === 0) {
-        this.safeTryReconnect(userId, serverName, configServers);
+        this.safeTryReconnect(userId, serverName);
       } else {
-        setTimeout(
-          () => this.safeTryReconnect(userId, serverName, configServers),
-          i * RECONNECT_STAGGER_MS,
-        );
+        setTimeout(() => this.safeTryReconnect(userId, serverName), i * RECONNECT_STAGGER_MS);
       }
     }
   }
@@ -135,12 +104,8 @@ export class OAuthReconnectionManager {
    * `RECONNECTION_TIMEOUT_MS` window if an error escapes
    * {@link tryReconnect}'s internal try/catch.
    */
-  private safeTryReconnect(
-    userId: string,
-    serverName: string,
-    configServers?: Record<string, ParsedServerConfig>,
-  ): void {
-    this.tryReconnect(userId, serverName, configServers).catch((error) => {
+  private safeTryReconnect(userId: string, serverName: string): void {
+    this.tryReconnect(userId, serverName).catch((error) => {
       logger.error(
         `[OAuthReconnectionManager][User: ${userId}][${serverName}] Unexpected reconnect error`,
         error,
@@ -152,26 +117,22 @@ export class OAuthReconnectionManager {
   private cleanupOnFailedReconnect(userId: string, serverName: string): void {
     this.reconnectionsTracker.setFailed(userId, serverName);
     this.reconnectionsTracker.removeActive(userId, serverName);
-    this.mcpManager?.disconnectUserConnection(userId, serverName, { reason: 'lifecycle' });
+    this.mcpManager?.disconnectUserConnection(userId, serverName);
   }
 
   /**
    * Attempts to reconnect a single OAuth MCP server.
-   * @param configServers Tenant-scoped Config-tier candidates used to resolve the effective config.
    * @returns true if reconnection succeeded, false otherwise.
    */
-  public async reconnectServer(
-    userId: string,
-    serverName: string,
-    configServers?: Record<string, ParsedServerConfig>,
-  ): Promise<boolean> {
+  public async reconnectServer(userId: string, serverName: string): Promise<boolean> {
     if (this.mcpManager == null) {
       return false;
     }
 
     this.reconnectionsTracker.setActive(userId, serverName);
     try {
-      return (await this.tryReconnect(userId, serverName, configServers)) === 'connected';
+      await this.tryReconnect(userId, serverName);
+      return !this.reconnectionsTracker.isFailed(userId, serverName);
     } catch {
       return false;
     }
@@ -182,13 +143,9 @@ export class OAuthReconnectionManager {
     this.reconnectionsTracker.removeActive(userId, serverName);
   }
 
-  private async tryReconnect(
-    userId: string,
-    serverName: string,
-    configServers?: Record<string, ParsedServerConfig>,
-  ): Promise<ReconnectOutcome> {
+  private async tryReconnect(userId: string, serverName: string) {
     if (this.mcpManager == null) {
-      return 'failed';
+      return;
     }
 
     const logPrefix = `[tryReconnectOAuthMCPServer][User: ${userId}][${serverName}]`;
@@ -196,30 +153,14 @@ export class OAuthReconnectionManager {
     logger.info(`${logPrefix} Attempting reconnection`);
 
     try {
-      const config = await MCPServersRegistry.getInstance().getServerConfig(
-        serverName,
-        userId,
-        configServers,
-      );
-      if (config && requiresEphemeralUserConnection(config)) {
-        logger.info(`${logPrefix} Deferring request-scoped connection until chat use`);
-        this.clearReconnection(userId, serverName);
-        return 'deferred';
-      }
+      const config = await MCPServersRegistry.getInstance().getServerConfig(serverName, userId);
 
       // attempt to get connection (this will use existing tokens and refresh if needed)
       const connection = await this.mcpManager.getUserConnection({
         serverName,
         user: { id: userId } as IUser,
-        serverConfig: config,
         flowManager: this.flowManager,
         tokenMethods: this.tokenMethods,
-        ...(this.onOAuthCredentialsChanged && {
-          onOAuthCredentialsChanged: this.onOAuthCredentialsChanged,
-        }),
-        ...(this.onOAuthCredentialsChanging && {
-          onOAuthCredentialsChanging: this.onOAuthCredentialsChanging,
-        }),
         // don't force new connection, let it reuse existing or create new as needed
         forceNew: false,
         // set a reasonable timeout for reconnection attempts
@@ -231,17 +172,14 @@ export class OAuthReconnectionManager {
       if (connection && (await connection.isConnected())) {
         logger.info(`${logPrefix} Successfully reconnected`);
         this.clearReconnection(userId, serverName);
-        return 'connected';
       } else {
         logger.warn(`${logPrefix} Failed to reconnect`);
         await connection?.disconnect();
         this.cleanupOnFailedReconnect(userId, serverName);
-        return 'failed';
       }
     } catch (error) {
       logger.warn(`${logPrefix} Failed to reconnect: ${error}`);
       this.cleanupOnFailedReconnect(userId, serverName);
-      return 'failed';
     }
   }
 

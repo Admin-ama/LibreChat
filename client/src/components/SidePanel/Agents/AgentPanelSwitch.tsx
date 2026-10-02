@@ -7,19 +7,16 @@ import AgentPanel from './AgentPanel';
 import store from '~/store';
 
 export default function AgentPanelSwitch() {
-  const conversation = useRecoilValue(store.conversationByIndex(0));
-  const agentId = conversation?.agent_id ?? null;
   return (
-    <AgentPanelProvider
-      observeToolAuthorization={conversation != null && !isEphemeralAgent(agentId)}
-    >
-      <AgentPanelSwitchWithContext agentId={agentId} />
+    <AgentPanelProvider>
+      <AgentPanelSwitchWithContext />
     </AgentPanelProvider>
   );
 }
 
-function AgentPanelSwitchWithContext({ agentId }: { agentId?: string | null }) {
+function AgentPanelSwitchWithContext() {
   const { activePanel, setCurrentAgentId } = useAgentPanelContext();
+  const agentId = useRecoilValue(store.conversationAgentIdByIndex(0));
 
   useEffect(() => {
     const agent_id = agentId ?? '';

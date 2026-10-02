@@ -1,8 +1,8 @@
-import React, { createContext, useContext, ReactNode, useCallback, useMemo, useState } from 'react';
+import React, { createContext, useContext, ReactNode, useMemo } from 'react';
 import { PermissionTypes, Permissions } from 'librechat-data-provider';
 import type { TPromptGroup } from 'librechat-data-provider';
 import type { PromptOption } from '~/common';
-import { usePromptGroupsNav, useHasAccess, useCatalogReady, activateCatalog } from '~/hooks';
+import { usePromptGroupsNav, useHasAccess } from '~/hooks';
 import { useGetAllPromptGroups } from '~/data-provider';
 import { CategoryIcon } from '~/components/Prompts';
 import { mapPromptGroups } from '~/utils';
@@ -21,8 +21,6 @@ type PromptGroupsContextType =
         isLoading: boolean;
       };
       hasAccess: boolean;
-      /** Opts the full prompt list query in; it stays idle until first requested. */
-      requestAllPromptGroups: () => void;
     })
   | null;
 
@@ -33,26 +31,10 @@ export const PromptGroupsProvider = ({ children }: { children: ReactNode }) => {
     permissionType: PermissionTypes.PROMPTS,
     permission: Permissions.USE,
   });
-  /** Prompt groups are a background-warmed catalog: the queries stay off the
-   * startup path until warmup releases them (or a prompts UI activates them). */
-  const promptsReady = useCatalogReady('prompts');
-  const promptsEnabled = hasAccess && promptsReady;
 
-  const promptGroupsNav = usePromptGroupsNav(promptsEnabled);
-
-  /**
-   * The full prompt list only serves the `/` command popover, so its query stays
-   * idle until requested instead of racing the paginated sidebar query on startup.
-   * Requesting it also releases the catalog, for a popover opened before warmup.
-   */
-  const [allPromptsActive, setAllPromptsActive] = useState(false);
-  const requestAllPromptGroups = useCallback(() => {
-    activateCatalog('prompts');
-    setAllPromptsActive(true);
-  }, []);
-
+  const promptGroupsNav = usePromptGroupsNav(hasAccess);
   const { data: allGroupsData, isLoading: isLoadingAll } = useGetAllPromptGroups(undefined, {
-    enabled: promptsEnabled && allPromptsActive,
+    enabled: hasAccess,
     select: (data) => {
       const mappedArray: PromptOption[] = data.map((group) => ({
         id: group._id ?? '',
@@ -82,21 +64,11 @@ export const PromptGroupsProvider = ({ children }: { children: ReactNode }) => {
       ...promptGroupsNav,
       allPromptGroups: {
         data: hasAccess ? allGroupsData : undefined,
-        /** A never-fetched disabled query reports `isLoading` in React Query v4 */
-        isLoading: promptsEnabled && allPromptsActive ? isLoadingAll : false,
+        isLoading: hasAccess ? isLoadingAll : false,
       },
       hasAccess,
-      requestAllPromptGroups,
     }),
-    [
-      promptGroupsNav,
-      allGroupsData,
-      isLoadingAll,
-      hasAccess,
-      promptsEnabled,
-      allPromptsActive,
-      requestAllPromptGroups,
-    ],
+    [promptGroupsNav, allGroupsData, isLoadingAll, hasAccess],
   );
 
   return (

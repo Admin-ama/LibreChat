@@ -7,7 +7,6 @@ import {
   finishRedisRequestTelemetry,
   runWithRedisRequestTelemetry,
 } from '~/cache/redisTelemetry';
-import { getErrorType, getSafeSpanException } from './safeException';
 import { getTelemetryRequestSpan } from './sdk';
 import { DEFAULT_HEALTH_PATH } from './config';
 
@@ -154,7 +153,7 @@ export function telemetryErrorMiddleware(
   if (span) {
     const routePath = getRoutePath(req);
     if (err) {
-      span.recordException(getSafeSpanException(err));
+      span.recordException(err instanceof Error ? err : String(err));
     }
     span.setStatus({ code: SpanStatusCode.ERROR });
     setIdentityAttributes(span, req);
@@ -165,4 +164,16 @@ export function telemetryErrorMiddleware(
   }
 
   next(err);
+}
+
+function getErrorType(err: ExpressErrorValue): string {
+  if (err instanceof Error) {
+    return err.name || err.constructor.name;
+  }
+
+  if (err === null) {
+    return 'null';
+  }
+
+  return typeof err;
 }

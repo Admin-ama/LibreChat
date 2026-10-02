@@ -3,7 +3,6 @@ import path from 'path';
 import yaml from 'js-yaml';
 import crypto from 'crypto';
 import { Types } from 'mongoose';
-import { mergeCodeEnvRef, type CodeEnvRef, type CodeEnvRefMap } from 'librechat-data-provider';
 import {
   logger,
   partitionIssues,
@@ -14,9 +13,9 @@ import {
   validateSkillFrontmatter,
   validateSkillDescription,
   deriveStructuredFrontmatterFields,
-  normalizeSkillFrontmatterKeys,
 } from '@librechat/data-schemas';
 import type { ValidationIssue } from '@librechat/data-schemas';
+import type { CodeEnvRef } from 'librechat-data-provider';
 import { parseFrontmatter, guessMimeType } from './import';
 
 export const DEPLOYMENT_SKILLS_DIR_ENV = 'DEPLOYMENT_SKILLS_DIR';
@@ -25,15 +24,8 @@ export const DEPLOYMENT_SKILL_SOURCE = 'deployment';
 export const DEPLOYMENT_SKILL_FILE_SOURCE = 'deployment';
 
 const SKILL_MD = 'SKILL.md';
+const DEPLOYMENT_AUTHOR_ID = new Types.ObjectId('de9100000000000000000000');
 const MAX_CACHED_TEXT_BYTES = 512 * 1024;
-
-let deploymentAuthorId: Types.ObjectId | undefined;
-
-/** Constructed on demand so importing this module never depends on a live mongoose binding. */
-function getDeploymentAuthorId(): Types.ObjectId {
-  deploymentAuthorId ??= new Types.ObjectId('de9100000000000000000000');
-  return deploymentAuthorId;
-}
 
 type SkillId = Types.ObjectId | string;
 
@@ -53,7 +45,6 @@ export type DeploymentSkillFile = {
   content?: string;
   isBinary?: boolean;
   codeEnvRef?: CodeEnvRef;
-  codeEnvRefs?: CodeEnvRefMap;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -73,7 +64,7 @@ export type DeploymentSkill = {
   authorName: string;
   version: number;
   source: typeof DEPLOYMENT_SKILL_SOURCE;
-  sourceMetadata: { deployment: true; directory: string; plugin?: string };
+  sourceMetadata: { deployment: true; directory: string };
   fileCount: number;
   alwaysApply: boolean;
   isPublic: true;
@@ -154,10 +145,7 @@ type ListAlwaysApplyResult = {
   after?: string | null;
 };
 
-type SkillFileRow = Omit<
-  DeploymentSkillFile,
-  'codeEnvRef' | 'codeEnvRefs' | 'content' | 'isBinary'
-> & {
+type SkillFileRow = Omit<DeploymentSkillFile, 'codeEnvRef' | 'content' | 'isBinary'> & {
   storageKey?: string;
   storageRegion?: string;
   tenantId?: string;
@@ -165,7 +153,6 @@ type SkillFileRow = Omit<
 
 type SkillFileContentRow = SkillFileRow & {
   codeEnvRef?: CodeEnvRef;
-  codeEnvRefs?: CodeEnvRefMap;
   content?: string;
   isBinary?: boolean;
 };
@@ -188,7 +175,6 @@ export type DeploymentSkillBaseMethods = {
     skillId: SkillId,
     relativePath: string,
     update: { content?: string; isBinary?: boolean },
-    expectedFileId?: string,
   ) => Promise<void>;
   updateSkillFileCodeEnvIds?: (
     updates: Array<{ skillId: SkillId; relativePath: string; codeEnvRef: CodeEnvRef }>,
@@ -203,8 +189,6 @@ type CollisionFilterResult<T> = {
 type LoadDeploymentSkillsOptions = {
   projectRoot?: string;
   env?: NodeJS.ProcessEnv;
-  /** Skills contributed by Agent Plugins packages, which yield to the deployment directory on a name conflict. */
-  additionalSkills?: DeploymentSkill[];
 };
 
 type DirectoryResolution = {
@@ -212,16 +196,9 @@ type DirectoryResolution = {
   explicitlyConfigured: boolean;
 };
 
-export type LoadedSkillDirectory = {
+type LoadedSkillDirectory = {
   directory: string;
   relativeDirectory: string;
-};
-
-export type SkillIdentity = {
-  /** Namespace for the deterministic skill id; keeps same-named skills from different sources distinct. */
-  idNamespace?: string;
-  /** Agent Plugins package that contributed the skill, when it came from one. */
-  plugin?: string;
 };
 
 export class DeploymentSkillRegistry {
@@ -346,7 +323,7 @@ export class DeploymentSkillRegistry {
         dbUpdates.push(update);
         continue;
       }
-      Object.assign(file, mergeCodeEnvRef(file, update.codeEnvRef));
+      file.codeEnvRef = update.codeEnvRef;
     }
     return dbUpdates;
   }
@@ -432,7 +409,6 @@ export async function initializeDeploymentSkills(
   registry = await loadDeploymentSkillsFromDirectory(resolved.directory, {
     projectRoot: options.projectRoot ?? process.cwd(),
     explicitlyConfigured: resolved.explicitlyConfigured,
-    ...(options.additionalSkills !== undefined && { additionalSkills: options.additionalSkills }),
   });
   const count = registry.list().length;
   if (count > 0) {
@@ -445,39 +421,10 @@ export async function initializeDeploymentSkills(
   return registry;
 }
 
-/**
- * Plugin-contributed skills yield to the deployment directory on a name
- * conflict: the operator's own `skill/` tree is the more specific source, and a
- * conflict must not fail startup the way a duplicate inside that tree does.
- */
-function appendPluginSkills(
-  skills: DeploymentSkill[],
-  additionalSkills: DeploymentSkill[],
-): DeploymentSkill[] {
-  const claimed = new Set(skills.map((skill) => skill.name));
-  const accepted: DeploymentSkill[] = [];
-  for (const skill of additionalSkills) {
-    if (claimed.has(skill.name)) {
-      logger.warn(
-        `[deploymentSkills] Plugin skill "${skill.name}" conflicts with a deployment skill and was skipped`,
-      );
-      continue;
-    }
-    claimed.add(skill.name);
-    accepted.push(skill);
-  }
-  return accepted;
-}
-
 export async function loadDeploymentSkillsFromDirectory(
   directory: string,
-  options: {
-    projectRoot?: string;
-    explicitlyConfigured?: boolean;
-    additionalSkills?: DeploymentSkill[];
-  } = {},
+  options: { projectRoot?: string; explicitlyConfigured?: boolean } = {},
 ): Promise<DeploymentSkillRegistry> {
-  const additionalSkills = options.additionalSkills ?? [];
   let rootStat: fs.Stats;
   try {
     rootStat = await fs.promises.stat(directory);
@@ -486,7 +433,7 @@ export async function loadDeploymentSkillsFromDirectory(
       (error as NodeJS.ErrnoException).code === 'ENOENT' &&
       options.explicitlyConfigured !== true
     ) {
-      return new DeploymentSkillRegistry(directory, additionalSkills);
+      return new DeploymentSkillRegistry(directory, []);
     }
     throw new Error(`Deployment skills directory not found: ${directory}`);
   }
@@ -496,11 +443,10 @@ export async function loadDeploymentSkillsFromDirectory(
 
   const skillDirectories = await findSkillDirectories(directory, options.projectRoot ?? directory);
   const skills = await Promise.all(
-    skillDirectories.map((skillDirectory) => loadSkillFromDirectory(skillDirectory, directory)),
+    skillDirectories.map((skillDirectory) => loadDeploymentSkill(skillDirectory, directory)),
   );
   validateUniqueNames(skills);
-  const merged = [...skills, ...appendPluginSkills(skills, additionalSkills)];
-  return new DeploymentSkillRegistry(directory, merged.sort(compareBySkillCursor));
+  return new DeploymentSkillRegistry(directory, skills.sort(compareBySkillCursor));
 }
 
 export function createDeploymentSkillMethods<T extends DeploymentSkillBaseMethods>(
@@ -605,7 +551,6 @@ export function createDeploymentSkillMethods<T extends DeploymentSkillBaseMethod
       skillId: SkillId,
       relativePath: string,
       update: { content?: string; isBinary?: boolean },
-      expectedFileId?: string,
     ): Promise<void> => {
       const deploymentFile = registry.getFileByPath(skillId, relativePath);
       if (deploymentFile) {
@@ -618,7 +563,7 @@ export function createDeploymentSkillMethods<T extends DeploymentSkillBaseMethod
         return;
       }
       if (base.updateSkillFileContent) {
-        await base.updateSkillFileContent(skillId, relativePath, update, expectedFileId);
+        await base.updateSkillFileContent(skillId, relativePath, update);
       }
     },
     updateSkillFileCodeEnvIds: async (
@@ -670,15 +615,9 @@ async function findSkillDirectories(
   return directories;
 }
 
-/**
- * Loads one `SKILL.md` directory into a deployment skill. Shared by the
- * deployment skills directory and Agent Plugins packages, which differ only in
- * how the skill is identified and attributed.
- */
-export async function loadSkillFromDirectory(
+async function loadDeploymentSkill(
   skillDirectory: LoadedSkillDirectory,
   rootDirectory: string,
-  identity: SkillIdentity = {},
 ): Promise<DeploymentSkill> {
   const skillMdPath = path.join(skillDirectory.directory, SKILL_MD);
   const [content, stat] = await Promise.all([
@@ -726,7 +665,7 @@ export async function loadSkillFromDirectory(
   }
 
   const derived = deriveStructuredFrontmatterFields(frontmatter);
-  const skillId = stableObjectId(`${identity.idNamespace ?? 'deployment-skill'}:${name}`);
+  const skillId = stableObjectId(`deployment-skill:${name}`);
   const files = await loadDeploymentSkillFiles({
     skillId,
     skillName: name,
@@ -740,14 +679,13 @@ export async function loadSkillFromDirectory(
     body: content,
     frontmatter,
     category: '',
-    author: getDeploymentAuthorId(),
+    author: DEPLOYMENT_AUTHOR_ID,
     authorName: 'Deployment',
     version: 1,
     source: DEPLOYMENT_SKILL_SOURCE,
     sourceMetadata: {
       deployment: true,
       directory: skillDirectory.relativeDirectory,
-      ...(identity.plugin !== undefined && { plugin: identity.plugin }),
     },
     fileCount: files.length,
     alwaysApply: parsed.alwaysApply ?? false,
@@ -798,7 +736,7 @@ async function loadDeploymentSkillFiles({
         bytes: stat.size,
         category: inferSkillFileCategory(relativePath),
         isExecutable: false,
-        author: getDeploymentAuthorId(),
+        author: DEPLOYMENT_AUTHOR_ID,
         createdAt: stat.birthtime,
         updatedAt: stat.mtime,
         ...cache,
@@ -877,11 +815,7 @@ function parseStructuredFrontmatter(
     if (typeof parsed !== 'object' || Array.isArray(parsed)) {
       return { error: `${SKILL_MD} frontmatter must be a YAML mapping.` };
     }
-    const normalized = normalizeSkillFrontmatterKeys(parsed as Record<string, unknown>);
-    if ('error' in normalized) {
-      return { error: `Invalid ${SKILL_MD} frontmatter: ${normalized.error}` };
-    }
-    return { frontmatter: normalized.frontmatter };
+    return { frontmatter: parsed as Record<string, unknown> };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return { error: `Invalid ${SKILL_MD} frontmatter: ${message}` };
@@ -1004,13 +938,7 @@ function toAlwaysApplyRow(skill: DeploymentSkill): AlwaysApplySkillRow {
 }
 
 function toSkillFileRow(file: DeploymentSkillFile): SkillFileRow {
-  const {
-    codeEnvRef: _codeEnvRef,
-    codeEnvRefs: _codeEnvRefs,
-    content: _content,
-    isBinary: _isBinary,
-    ...row
-  } = file;
+  const { codeEnvRef: _codeEnvRef, content: _content, isBinary: _isBinary, ...row } = file;
   return row;
 }
 
@@ -1018,7 +946,6 @@ function toSkillFileContentRow(file: DeploymentSkillFile): SkillFileContentRow {
   return {
     ...toSkillFileRow(file),
     codeEnvRef: file.codeEnvRef,
-    codeEnvRefs: file.codeEnvRefs,
     content: file.content,
     isBinary: file.isBinary,
   };

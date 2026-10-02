@@ -33,20 +33,11 @@ import {
   shouldFailMCPOAuthFallback,
   isTerminalMCPOAuthPollingError,
   shouldUseMCPConnectionStatus,
-  applyPendingOAuthState,
-  applyMCPDiscoveryAuthorizationState,
 } from './polling';
-import {
-  useLocalize,
-  useHasAccess,
-  useMCPSelect,
-  useCatalogReady,
-  useMCPConnectionStatus,
-} from '~/hooks';
-import { useGetStartupConfig, useMCPServersQuery, useMCPToolsQuery } from '~/data-provider';
+import { useLocalize, useHasAccess, useMCPSelect, useMCPConnectionStatus } from '~/hooks';
+import { useGetStartupConfig, useMCPServersQuery } from '~/data-provider';
 import { mcpServerInitStatesAtom, getServerInitState } from '~/store/mcp';
 import { getMCPReinitializeErrorMessage } from './errors';
-import { openInNewTab } from '~/utils';
 
 export interface MCPServerDefinition {
   serverName: string;
@@ -54,8 +45,6 @@ export interface MCPServerDefinition {
   dbId?: string; // MongoDB ObjectId for database servers (used for permissions)
   effectivePermissions: number; // Permission bits (VIEW=1, EDIT=2, DELETE=4, SHARE=8)
   consumeOnly?: boolean;
-  /** True when chat request fields are required before the server can connect. */
-  requestScoped?: boolean;
 }
 
 // Poll intervals are kept local since they're timer references that can't be serialized
@@ -65,24 +54,7 @@ type PollIntervals = Record<string, NodeJS.Timeout | null>;
 export function useMCPServerManager({
   conversationId,
   storageContextKey,
-  specName,
-  ownsChatSelection = false,
-  observeToolAuthorization = false,
-}: {
-  conversationId?: string | null;
-  storageContextKey?: string;
-  specName?: string | null;
-  /**
-   * Opt in to managing the chat MCP selection. Most callers mount this hook for
-   * the catalog, the server actions, or the status icons and never read the
-   * selection, so it defaults off: every instance keyed to a conversation shares
-   * one selection, and only the one rendering the picker knows the spec context
-   * needed to prune it correctly.
-   */
-  ownsChatSelection?: boolean;
-  /** Allows hosts that suppress MCP catalog work (such as ephemeral agents) to reuse the manager. */
-  observeToolAuthorization?: boolean;
-} = {}) {
+}: { conversationId?: string | null; storageContextKey?: string } = {}) {
   const localize = useLocalize();
   const queryClient = useQueryClient();
   const { showToast } = useToastContext();
@@ -92,24 +64,12 @@ export function useMCPServerManager({
     permissionType: PermissionTypes.MCP_SERVERS,
     permission: Permissions.USE,
   });
-  /** MCP catalogs are background-warmed: the server list powers nav-link
-   * visibility and the chat-menu select, none of which gate first paint. */
-  const mcpServersReady = useCatalogReady('mcpServers');
-  const mcpEnabled = canUseMcp && mcpServersReady;
 
-  const { data: loadedServers, isLoading } = useMCPServersQuery({ enabled: mcpEnabled });
-  const mcpToolsReady = useCatalogReady('mcpTools');
-  const { data: discoveredMCPTools } = useMCPToolsQuery({
-    enabled:
-      observeToolAuthorization &&
-      mcpEnabled &&
-      mcpToolsReady &&
-      Object.keys(loadedServers ?? {}).length > 0,
-  });
+  const { data: loadedServers, isLoading } = useMCPServersQuery({ enabled: canUseMcp });
 
   // Fetch effective permissions for all MCP servers
   const { data: permissionsMap } = useGetAllEffectivePermissionsQuery(ResourceType.MCPSERVER, {
-    enabled: mcpEnabled,
+    enabled: canUseMcp,
   });
 
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
@@ -120,7 +80,7 @@ export function useMCPServerManager({
     const definitions: MCPServerDefinition[] = [];
     if (loadedServers) {
       for (const [serverName, metadata] of Object.entries(loadedServers)) {
-        const { dbId, consumeOnly, requestScoped, ...config } = metadata;
+        const { dbId, consumeOnly, ...config } = metadata;
 
         // Get effective permissions from the permissions map using _id
         // Fall back to 1 (VIEW) for YAML-based servers without _id
@@ -131,7 +91,6 @@ export function useMCPServerManager({
           dbId,
           effectivePermissions,
           consumeOnly,
-          requestScoped,
           config,
         });
       }
@@ -149,9 +108,6 @@ export function useMCPServerManager({
     conversationId,
     storageContextKey,
     servers: selectableServers,
-    allServers: availableMCPServers,
-    specName,
-    ownsChatSelection,
   });
   const mcpValuesRef = useRef(mcpValues);
 
@@ -210,33 +166,9 @@ export function useMCPServerManager({
   // Poll intervals are kept local (not serializable)
   const pollIntervalsRef = useRef<PollIntervals>({});
 
-  const { connectionStatus: polledConnectionStatus } = useMCPConnectionStatus({
-    enabled: observeToolAuthorization && !isLoading && availableMCPServers.length > 0,
+  const { connectionStatus } = useMCPConnectionStatus({
+    enabled: !isLoading && availableMCPServers.length > 0,
   });
-  const connectionStatus = useMemo(() => {
-    if (!polledConnectionStatus) {
-      return applyPendingOAuthState(
-        applyMCPDiscoveryAuthorizationState(polledConnectionStatus, discoveredMCPTools),
-        serverInitStates,
-      );
-    }
-
-    let changed = false;
-    const nextStatus: MCPConnectionStatusResponse['connectionStatus'] = {};
-    for (const [serverName, status] of Object.entries(polledConnectionStatus)) {
-      if (status.requestScoped === true || loadedServers?.[serverName]?.requestScoped !== true) {
-        nextStatus[serverName] = status;
-        continue;
-      }
-      changed = true;
-      nextStatus[serverName] = { ...status, requestScoped: true };
-    }
-    const normalizedStatus = changed ? nextStatus : polledConnectionStatus;
-    return applyPendingOAuthState(
-      applyMCPDiscoveryAuthorizationState(normalizedStatus, discoveredMCPTools),
-      serverInitStates,
-    );
-  }, [polledConnectionStatus, loadedServers, discoveredMCPTools, serverInitStates]);
 
   const updateServerInitState = useCallback(
     (serverName: string, updates: Partial<MCPServerInitState>) => {
@@ -522,20 +454,17 @@ export function useMCPServerManager({
           });
 
           if (autoOpenOAuth) {
-            openInNewTab(response.oauthUrl);
+            window.open(response.oauthUrl, '_blank', 'noopener,noreferrer');
           }
 
           startServerPolling(serverName, response.flowId, response.oauthTimeout);
         } else {
-          cleanupServerState(serverName);
-          void Promise.all([
+          await Promise.all([
             queryClient.invalidateQueries([QueryKeys.mcpServers]),
             queryClient.invalidateQueries([QueryKeys.mcpTools]),
             queryClient.invalidateQueries([QueryKeys.mcpAuthValues]),
             queryClient.invalidateQueries([QueryKeys.mcpConnectionStatus]),
-          ]).catch((error) => {
-            console.error(`[MCP Manager] Failed to refresh queries for ${serverName}:`, error);
-          });
+          ]);
 
           showToast({
             message: localize('com_ui_mcp_initialized_success', { 0: serverName }),
@@ -546,6 +475,8 @@ export function useMCPServerManager({
           if (!currentValues.includes(serverName)) {
             setMCPValues([...currentValues, serverName]);
           }
+
+          cleanupServerState(serverName);
         }
         return response;
       } catch (error) {

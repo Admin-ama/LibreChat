@@ -66,8 +66,6 @@ export const resources: {
       com_ui_toggle_theme: string;
       com_ui_dark_theme_enabled: string;
       com_ui_light_theme_enabled: string;
-      com_ui_high_contrast_dark_theme_enabled: string;
-      com_ui_high_contrast_light_theme_enabled: string;
     };
   };
   readonly ar: {

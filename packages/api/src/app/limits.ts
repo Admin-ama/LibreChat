@@ -11,7 +11,6 @@ export const handleRateLimits = (rateLimits?: TCustomConfig['rateLimits']): void
   }
 
   const rateLimitKeys = {
-    agentEvents: 'AGENT_EVENT',
     fileUploads: RateLimitPrefix.FILE_UPLOAD,
     conversationsImport: RateLimitPrefix.IMPORT,
     tts: RateLimitPrefix.TTS,

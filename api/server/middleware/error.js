@@ -50,8 +50,7 @@ const sendError = async (req, res, options, callback) => {
     await saveMessage(
       {
         userId: req?.user?.id,
-        isTemporary: req?.resolvedConversation?.isTemporary ?? req?.body?.isTemporary,
-        expiredAt: req?.resolvedConversation?.expiredAt,
+        isTemporary: req?.body?.isTemporary,
         interfaceConfig: req?.config?.interfaceConfig,
       },
       { ...errorMessage, user },

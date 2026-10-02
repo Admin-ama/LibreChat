@@ -1,22 +1,18 @@
-import { useMemo, useState, type RefObject } from 'react';
-import { Folder } from 'lucide-react';
+import { useEffect, useMemo, useState, type RefObject } from 'react';
 import {
   Button,
-  ControlCombobox,
-  Label,
+  Spinner,
   OGDialog,
   OGDialogClose,
-  OGDialogContent,
-  OGDialogHeader,
   OGDialogTitle,
-  Spinner,
+  OGDialogHeader,
+  OGDialogContent,
   useToastContext,
 } from '@librechat/client';
 import type { TChatProject } from 'librechat-data-provider';
-import type { OptionWithIcon } from '~/common';
 import { useAssignConversationToProjectMutation, useProjectsInfiniteQuery } from '~/data-provider';
-import { NotificationSeverity } from '~/common';
 import { useLocalize } from '~/hooks';
+import { NotificationSeverity } from '~/common';
 
 type ProjectButtonProps = {
   conversationId: string;
@@ -45,7 +41,6 @@ function ProjectConversationDialog({
   const { data, fetchNextPage, isFetchingNextPage } = useProjectsInfiniteQuery({
     sortBy: 'name',
     sortDirection: 'asc',
-    limit: 100,
   });
 
   const projects = useMemo<TChatProject[]>(
@@ -53,29 +48,16 @@ function ProjectConversationDialog({
     [data?.pages],
   );
   const hasNextPage = data?.pages[data.pages.length - 1]?.nextCursor != null;
-  const selectedProject = projects.find((project) => project._id === selectedProjectId);
-  const projectItems = useMemo<OptionWithIcon[]>(
-    () =>
-      projects.map((project) => ({
-        label: project.name,
-        value: project._id,
-        icon: <Folder className="h-4 w-4 text-text-secondary" aria-hidden="true" />,
-      })),
-    [projects],
-  );
-  const canSave =
-    Boolean(selectedProjectId) &&
-    selectedProjectId !== (chatProjectId ?? '') &&
-    !assignConversation.isLoading;
+
+  useEffect(() => {
+    setSelectedProjectId(chatProjectId ?? '');
+  }, [chatProjectId]);
 
   const saveProject = () => {
-    if (!canSave) {
-      return;
-    }
     assignConversation.mutate(
       {
         conversationId,
-        projectId: selectedProjectId,
+        projectId: selectedProjectId || null,
       },
       {
         onSuccess: () => {
@@ -101,53 +83,44 @@ function ProjectConversationDialog({
   return (
     <OGDialogContent
       id="project-conversation-dialog"
-      className="w-11/12 max-w-md overflow-visible"
+      className="w-11/12 max-w-md"
       showCloseButton={false}
     >
       <OGDialogHeader>
         <OGDialogTitle>{localize('com_ui_change_project')}</OGDialogTitle>
       </OGDialogHeader>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="change-project-select" className="text-sm font-medium text-text-primary">
-          {localize('com_ui_select_project')}
-        </Label>
-        <ControlCombobox
-          selectId="change-project-select"
-          selectedValue={selectedProjectId}
-          displayValue={selectedProject?.name}
-          items={projectItems}
-          setValue={setSelectedProjectId}
-          SelectIcon={<Folder className="h-4 w-4 text-text-secondary" aria-hidden="true" />}
-          ariaLabel={localize('com_ui_select_project')}
-          searchPlaceholder={localize('com_ui_search_projects')}
-          selectPlaceholder={localize('com_ui_select_project')}
-          isCollapsed={false}
-          showCarat={true}
-          placement="bottom-start"
-          portal={false}
-          matchTriggerWidth={true}
-          containerClassName="w-full px-0"
-          className="h-10 w-full justify-start gap-2 rounded-xl border border-border-light bg-surface-tertiary px-3 text-sm text-text-primary hover:bg-surface-hover"
-        />
-        {hasNextPage ? (
-          <Button
-            type="button"
-            variant="link"
-            className="h-auto justify-start px-0 text-sm"
-            onClick={() => fetchNextPage()}
-            disabled={isFetchingNextPage}
-          >
-            {isFetchingNextPage ? localize('com_ui_loading') : localize('com_ui_load_more')}
-          </Button>
-        ) : null}
-      </div>
-      <div className="flex justify-end gap-2 pt-4">
+      <label className="flex flex-col gap-2 text-sm text-text-primary">
+        {localize('com_ui_select_project')}
+        <select
+          value={selectedProjectId}
+          onChange={(event) => setSelectedProjectId(event.target.value)}
+          className="h-10 rounded-lg border border-border-light bg-surface-primary px-3 text-sm outline-none focus:ring-2 focus:ring-ring-primary"
+        >
+          <option value="">{localize('com_ui_unassigned')}</option>
+          {projects.map((project) => (
+            <option key={project._id} value={project._id}>
+              {project.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {hasNextPage && (
+        <button
+          type="button"
+          className="mt-3 text-sm text-text-secondary hover:text-text-primary"
+          onClick={() => fetchNextPage()}
+          disabled={isFetchingNextPage}
+        >
+          {isFetchingNextPage ? localize('com_ui_loading') : localize('com_ui_load_more')}
+        </button>
+      )}
+      <div className="flex justify-end gap-4 pt-4">
         <OGDialogClose asChild>
-          <Button type="button" variant="outline">
+          <Button aria-label="cancel" variant="outline">
             {localize('com_ui_cancel')}
           </Button>
         </OGDialogClose>
-        <Button type="button" variant="submit" onClick={saveProject} disabled={!canSave}>
+        <Button onClick={saveProject} disabled={assignConversation.isLoading}>
           {assignConversation.isLoading ? <Spinner /> : localize('com_ui_save')}
         </Button>
       </div>

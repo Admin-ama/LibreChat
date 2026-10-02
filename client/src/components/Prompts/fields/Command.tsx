@@ -1,26 +1,21 @@
-import { useId, useState, useEffect } from 'react';
 import { Input } from '@librechat/client';
 import { SquareSlash } from 'lucide-react';
 import { Constants } from 'librechat-data-provider';
+import { useState, useEffect } from 'react';
 import { useLocalize } from '~/hooks';
-import { cn } from '~/utils';
 
 const Command = ({
   initialValue,
   onValueChange,
   disabled,
   tabIndex,
-  labelBgClassName = 'bg-presentation',
 }: {
   initialValue?: string;
   onValueChange?: (value: string) => void;
   disabled?: boolean;
   tabIndex?: number;
-  /** Surface the floating label notches out of; must match whatever sits behind the field */
-  labelBgClassName?: string;
 }) => {
   const localize = useLocalize();
-  const commandId = useId();
   const [command, setCommand] = useState(initialValue || '');
   const [charCount, setCharCount] = useState(initialValue?.length || 0);
 
@@ -50,7 +45,10 @@ const Command = ({
 
   return (
     <div className="rounded-xl border border-border-medium">
-      <label htmlFor={commandId} className="block px-4 pt-2 text-sm text-text-secondary md:hidden">
+      <label
+        htmlFor="prompt-command"
+        className="block px-4 pt-2 text-sm text-text-secondary md:hidden"
+      >
         {localize('com_ui_command_placeholder')}
       </label>
       <div className="relative flex h-10 items-center gap-1 pl-4 pr-2 text-sm text-text-secondary">
@@ -58,7 +56,7 @@ const Command = ({
         <div className="relative min-w-0 flex-1">
           <Input
             type="text"
-            id={commandId}
+            id="prompt-command"
             tabIndex={tabIndex}
             disabled={disabled}
             placeholder=" "
@@ -68,11 +66,8 @@ const Command = ({
             aria-label={localize('com_ui_command_placeholder')}
           />
           <label
-            htmlFor={commandId}
-            className={cn(
-              'pointer-events-none absolute left-0 top-0.5 hidden max-w-[calc(100%-3.5rem)] origin-[0] translate-y-2 scale-100 rounded px-1 text-sm text-text-secondary transition-transform duration-200 peer-placeholder-shown:translate-y-2 peer-placeholder-shown:scale-100 peer-focus:-translate-y-3 peer-focus:scale-75 peer-focus:text-text-primary peer-[:not(:placeholder-shown)]:-translate-y-3 peer-[:not(:placeholder-shown)]:scale-75 md:block',
-              labelBgClassName,
-            )}
+            htmlFor="prompt-command"
+            className="pointer-events-none absolute left-0 top-0.5 hidden max-w-[calc(100%-3.5rem)] origin-[0] translate-y-2 scale-100 rounded bg-presentation px-1 text-sm text-text-secondary transition-transform duration-200 peer-placeholder-shown:translate-y-2 peer-placeholder-shown:scale-100 peer-focus:-translate-y-3 peer-focus:scale-75 peer-focus:text-text-primary peer-[:not(:placeholder-shown)]:-translate-y-3 peer-[:not(:placeholder-shown)]:scale-75 md:block"
           >
             {localize('com_ui_command_placeholder')}
           </label>

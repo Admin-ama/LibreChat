@@ -1,17 +1,37 @@
-import { HatGlasses } from 'lucide-react';
-import { Chip, TooltipAnchor } from '@librechat/client';
+import React from 'react';
+import { useRecoilValue } from 'recoil';
+import { TooltipAnchor } from '@librechat/client';
+import { MessageCircleDashed } from 'lucide-react';
+import { Constants } from 'librechat-data-provider';
+import { useRecoilState, useRecoilCallback } from 'recoil';
 import { useShortcutAriaKey, useShortcutHint } from '~/hooks/useKeyboardShortcuts';
-import useTemporaryChat from '~/hooks/Chat/useTemporaryChat';
 import { useLocalize } from '~/hooks';
 import { cn } from '~/utils';
+import store from '~/store';
 
 export function TemporaryChat() {
   const localize = useLocalize();
-  const { show, isTemporary, toggle } = useTemporaryChat();
+  const [isTemporary, setIsTemporary] = useRecoilState(store.isTemporary);
+  const conversation = useRecoilValue(store.conversationByIndex(0));
+  const isSubmitting = useRecoilValue(store.isSubmittingFamily(0));
   const tooltipDescription = useShortcutHint('toggleTemporaryChat', localize('com_ui_temporary'));
   const ariaKey = useShortcutAriaKey('toggleTemporaryChat');
 
-  if (!show) {
+  const handleBadgeToggle = useRecoilCallback(
+    () => () => {
+      setIsTemporary(!isTemporary);
+    },
+    [isTemporary],
+  );
+
+  const conversationId = conversation?.conversationId;
+  const hasStarted = conversationId != null && conversationId !== Constants.NEW_CONVO;
+
+  if (
+    hasStarted ||
+    (Array.isArray(conversation?.messages) && conversation.messages.length >= 1) ||
+    isSubmitting
+  ) {
     return null;
   }
 
@@ -21,7 +41,7 @@ export function TemporaryChat() {
         description={tooltipDescription}
         render={
           <button
-            onClick={toggle}
+            onClick={handleBadgeToggle}
             aria-label={localize('com_ui_temporary')}
             aria-pressed={isTemporary}
             aria-keyshortcuts={ariaKey}
@@ -32,36 +52,10 @@ export function TemporaryChat() {
                 : 'bg-presentation shadow-sm hover:bg-surface-active-alt',
             )}
           >
-            <HatGlasses className="icon-md" aria-hidden="true" />
+            <MessageCircleDashed className="icon-md" aria-hidden="true" />
           </button>
         }
       />
     </div>
-  );
-}
-
-/** Once the first message is sent the toggle retires, so the active mode still
- * needs a persistent, read-only cue in the header. `role="status"` carries the
- * mode change to assistive technology, which matters most below `md` where the
- * label is visually hidden and only the icon remains. */
-export function TemporaryChatIndicator() {
-  const localize = useLocalize();
-  const { isActive } = useTemporaryChat();
-
-  if (!isActive) {
-    return null;
-  }
-
-  return (
-    <Chip
-      role="status"
-      tone="neutral"
-      size="theme"
-      shape="theme"
-      className="flex-shrink-0"
-      leading={<HatGlasses className="size-4 shrink-0" aria-hidden="true" />}
-    >
-      <span className="max-md:sr-only">{localize('com_ui_temporary')}</span>
-    </Chip>
   );
 }

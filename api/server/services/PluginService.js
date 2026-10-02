@@ -42,9 +42,7 @@ const getUserPluginAuthValue = async (userId, authField, throwError = true, plug
     const pluginAuth = await findOnePluginAuth(searchParams);
     if (!pluginAuth) {
       const pluginInfo = pluginKey ? ` for plugin ${pluginKey}` : '';
-      const error = new Error(`No plugin auth ${authField} found for user ${userId}${pluginInfo}`);
-      error.code = 'PLUGIN_AUTH_NOT_FOUND';
-      throw error;
+      throw new Error(`No plugin auth ${authField} found for user ${userId}${pluginInfo}`);
     }
 
     const decryptedValue = await decrypt(pluginAuth.value);
@@ -53,9 +51,7 @@ const getUserPluginAuthValue = async (userId, authField, throwError = true, plug
     if (!throwError) {
       return null;
     }
-    if (err?.code !== 'PLUGIN_AUTH_NOT_FOUND') {
-      logger.error('[getUserPluginAuthValue]', err);
-    }
+    logger.error('[getUserPluginAuthValue]', err);
     throw err;
   }
 };

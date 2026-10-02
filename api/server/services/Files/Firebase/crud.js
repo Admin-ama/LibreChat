@@ -7,7 +7,6 @@ const {
   deleteRagFile,
   getFirebaseStorage,
   assertRemoteFileURL,
-  getSafeErrorMetadata,
   getRemoteFileFetchMaxBytes,
   getRemoteFileFetchTimeoutMs,
   assertRemoteFileContentLength,
@@ -250,7 +249,7 @@ async function uploadFileToFirebase({ req, file, file_id }) {
  * @param {string} filepath - The filepath.
  * @returns {Promise<ReadableStream>} A readable stream of the file.
  */
-async function getFirebaseFileStream(_req, filepath, { signal } = {}) {
+async function getFirebaseFileStream(_req, filepath) {
   try {
     const storage = getFirebaseStorage();
     if (!storage) {
@@ -261,12 +260,11 @@ async function getFirebaseFileStream(_req, filepath, { signal } = {}) {
       method: 'get',
       url: filepath,
       responseType: 'stream',
-      signal,
     });
 
     return response.data;
   } catch (error) {
-    logger.error('Error getting Firebase file stream:', getSafeErrorMetadata(error));
+    logger.error('Error getting Firebase file stream:', error);
     throw error;
   }
 }

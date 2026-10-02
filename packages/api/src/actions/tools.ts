@@ -1,7 +1,5 @@
 import { actionDelimiter, validateAndParseOpenAPISpec } from 'librechat-data-provider';
 
-export { normalizeActionToolName } from 'librechat-data-provider';
-
 export type ActionToolLike = {
   function?: {
     name?: string;

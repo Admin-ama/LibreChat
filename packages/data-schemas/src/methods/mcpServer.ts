@@ -1,5 +1,4 @@
 import { nanoid } from 'nanoid';
-import { normalizeServerName } from 'librechat-data-provider';
 import type { Model, RootFilterQuery, Types } from 'mongoose';
 import type { MCPOptions } from 'librechat-data-provider';
 import type { MCPServerDocument } from '../types';
@@ -11,8 +10,8 @@ const RETRY_BASE_DELAY_MS = 25;
 
 /**
  * Helper to check if an error is a MongoDB duplicate key error.
- * Both MCPServer unique indexes represent raw or normalized server-name collisions,
- * so retrying name allocation is safe for either E11000 source.
+ * Since serverName is the only unique index on MCPServer, any E11000 error
+ * during creation is necessarily a serverName collision.
  */
 function isDuplicateKeyError(error: unknown): boolean {
   if (error && typeof error === 'object' && 'code' in error) {
@@ -150,7 +149,6 @@ export function createMCPServerMethods(mongoose: typeof import('mongoose')): {
 
         const newServer = await MCPServer.create({
           serverName,
-          normalizedServerName: normalizeServerName(serverName),
           config: data.config,
           author: data.author,
         });

@@ -1,6 +1,6 @@
 import { SafeSearchTypes, SearchProviders, ScraperProviders } from 'librechat-data-provider';
 import type { TCustomConfig } from 'librechat-data-provider';
-import { loadWebSearchConfig, webSearchAuth, getWebSearchKeys } from './web';
+import { loadWebSearchConfig } from './web';
 
 describe('loadWebSearchConfig', () => {
   describe('firecrawlVersion', () => {
@@ -60,8 +60,6 @@ describe('loadWebSearchConfig', () => {
         tavilyApiKey: '${TAVILY_API_KEY}',
         tavilySearchUrl: '${TAVILY_SEARCH_URL}',
         tavilyExtractUrl: '${TAVILY_EXTRACT_URL}',
-        keenableApiKey: '${KEENABLE_API_KEY}',
-        keenableApiUrl: '${KEENABLE_API_URL}',
       });
     });
 
@@ -94,59 +92,6 @@ describe('loadWebSearchConfig', () => {
       expect(result?.scraperProvider).toBe('serper');
       expect(result?.searchProvider).toBe('serper');
       expect(result?.serperApiKey).toBe('test-key');
-    });
-
-    it('should preserve searxngSearchOptions', () => {
-      const config: TCustomConfig['webSearch'] = {
-        searchProvider: SearchProviders.SEARXNG,
-        searxngSearchOptions: {
-          engines: 'google,bing,startpage,qwant',
-          language: 'en',
-        },
-      };
-
-      const result = loadWebSearchConfig(config);
-
-      expect(result?.searxngSearchOptions).toEqual({
-        engines: 'google,bing,startpage,qwant',
-        language: 'en',
-      });
-    });
-
-    it('should normalize a YAML engine list, which reaches this loader unparsed', () => {
-      const result = loadWebSearchConfig({
-        searchProvider: SearchProviders.SEARXNG,
-        searxngSearchOptions: {
-          engines: ['google', 'bing', 'startpage'],
-          language: 'en',
-        },
-      });
-
-      expect(result?.searxngSearchOptions?.engines).toBe('google,bing,startpage');
-    });
-
-    it('should trim whitespace and empty entries from a raw engines string', () => {
-      const result = loadWebSearchConfig({
-        searchProvider: SearchProviders.SEARXNG,
-        searxngSearchOptions: { engines: 'google, bing , , startpage' },
-      });
-
-      expect(result?.searxngSearchOptions?.engines).toBe('google,bing,startpage');
-    });
-
-    it('should treat an all-blank engines value as unset', () => {
-      const result = loadWebSearchConfig({
-        searchProvider: SearchProviders.SEARXNG,
-        searxngSearchOptions: { engines: '  ,  ' },
-      });
-
-      expect(result?.searxngSearchOptions?.engines).toBeUndefined();
-    });
-
-    it('should leave searxngSearchOptions undefined when the block is absent', () => {
-      const result = loadWebSearchConfig({ searchProvider: SearchProviders.SEARXNG });
-
-      expect(result?.searxngSearchOptions).toBeUndefined();
     });
   });
 
@@ -189,8 +134,6 @@ describe('loadWebSearchConfig', () => {
       expect(result?.firecrawlApiKey).toBe('${FIRECRAWL_API_KEY}');
       expect(result?.jinaApiKey).toBe('${JINA_API_KEY}');
       expect(result?.cohereApiKey).toBe('${COHERE_API_KEY}');
-      expect(result?.keenableApiKey).toBe('${KEENABLE_API_KEY}');
-      expect(result?.keenableApiUrl).toBe('${KEENABLE_API_URL}');
     });
 
     it('should preserve custom API keys', () => {
@@ -230,26 +173,5 @@ describe('loadWebSearchConfig', () => {
       expect(result?.firecrawlApiUrl).toBe('https://custom-firecrawl.com');
       expect(result?.jinaApiUrl).toBe('https://custom-jina.com');
     });
-  });
-});
-
-describe('webSearchAuth', () => {
-  it('registers Keenable in both the provider and the scraper category', () => {
-    expect(webSearchAuth.providers).toHaveProperty(SearchProviders.KEENABLE);
-    expect(webSearchAuth.scrapers).toHaveProperty(ScraperProviders.KEENABLE);
-  });
-
-  it('marks every Keenable auth field optional (keyless by default)', () => {
-    // A required field (1) would make Keenable unusable without a key, and the
-    // keyless carve-out in `loadWebSearchAuth` depends on there being none.
-    expect(Object.values(webSearchAuth.providers.keenable)).toEqual([0, 0]);
-    expect(Object.values(webSearchAuth.scrapers.keenable)).toEqual([0]);
-  });
-
-  it('exposes the Keenable keys once across categories', () => {
-    const keys = getWebSearchKeys();
-
-    expect(keys.filter((key) => key === 'keenableApiKey')).toHaveLength(1);
-    expect(keys).toContain('keenableApiUrl');
   });
 });

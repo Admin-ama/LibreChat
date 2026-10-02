@@ -38,15 +38,7 @@ function parseTokens(text: string): number {
 }
 
 async function readUsageTotals(page: Page): Promise<{ input: number; output: number }> {
-  /** Click, not hover: hover only surfaces the compact snapshot tooltip. The
-   *  popover then opens to the gauge alone, with the totals behind a remembered
-   *  disclosure — idempotent, since the preference survives the previous turn. */
-  await gauge(page).click();
-  await expect(popover(page)).toBeVisible({ timeout: 15000 });
-  const toggle = popover(page).getByTestId('context-breakdown-toggle');
-  if ((await toggle.getAttribute('aria-expanded')) === 'false') {
-    await toggle.click();
-  }
+  await gauge(page).hover();
   const section = popover(page).getByTestId('token-usage-totals');
   await expect(section).toBeVisible({ timeout: 15000 });
   const rows = section.locator('div');

@@ -1,5 +1,5 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
 import filenamify from 'filenamify';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   Input,
   Label,
@@ -11,17 +11,14 @@ import {
 } from '@librechat/client';
 import type { TConversation } from 'librechat-data-provider';
 import { useLocalize, useExportConversation } from '~/hooks';
-import { normalizeExportFilename } from '~/utils';
 
 const TYPE_OPTIONS = [
-  { value: 'markdown', label: 'markdown (.md)' },
+  { value: 'screenshot', label: 'screenshot (.png)' },
   { value: 'text', label: 'text (.txt)' },
+  { value: 'markdown', label: 'markdown (.md)' },
   { value: 'json', label: 'json (.json)' },
   { value: 'csv', label: 'csv (.csv)' },
-  { value: 'screenshot', label: 'screenshot (.png)' },
 ];
-
-const DEFAULT_TYPE = 'markdown';
 
 export default function ExportModal({
   open,
@@ -39,7 +36,7 @@ export default function ExportModal({
   const localize = useLocalize();
 
   const [filename, setFileName] = useState('');
-  const [type, setType] = useState<string>(DEFAULT_TYPE);
+  const [type, setType] = useState<string>('screenshot');
 
   const [includeOptions, setIncludeOptions] = useState<boolean | 'indeterminate'>(true);
   const [exportBranches, setExportBranches] = useState<boolean | 'indeterminate'>(false);
@@ -53,26 +50,29 @@ export default function ExportModal({
 
   useEffect(() => {
     setFileName(filenamify(String(conversation?.title ?? 'file')));
-    setType(DEFAULT_TYPE);
+    setType('screenshot');
     setIncludeOptions(true);
     setExportBranches(false);
     setRecursive(true);
   }, [conversation?.title, open]);
 
   const handleTypeChange = useCallback((newType: string) => {
-    const branches = newType === 'json' || newType === 'csv';
+    const branches = newType === 'json' || newType === 'csv' || newType === 'webpage';
     const options = newType !== 'csv' && newType !== 'screenshot';
     setExportBranches(branches);
     setIncludeOptions(options);
     setType(newType);
   }, []);
 
-  const exportBranchesSupport = useMemo(() => type === 'json' || type === 'csv', [type]);
+  const exportBranchesSupport = useMemo(
+    () => type === 'json' || type === 'csv' || type === 'webpage',
+    [type],
+  );
   const exportOptionsSupport = useMemo(() => type !== 'csv' && type !== 'screenshot', [type]);
 
   const { exportConversation } = useExportConversation({
     conversation,
-    filename: normalizeExportFilename(filenamify(filename)),
+    filename: filenamify(filename),
     type,
     includeOptions,
     exportBranches,
@@ -107,7 +107,6 @@ export default function ExportModal({
                   value={type}
                   onChange={handleTypeChange}
                   options={TYPE_OPTIONS}
-                  sizeClasses="z-50"
                   className="z-50"
                   portal={false}
                 />
@@ -127,15 +126,15 @@ export default function ExportModal({
                       onCheckedChange={setIncludeOptions}
                       aria-labelledby="includeOptions-label"
                     />
-                    <Label
+                    <label
                       id="includeOptions-label"
                       htmlFor="includeOptions"
-                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 dark:text-gray-50"
                     >
                       {exportOptionsSupport
                         ? localize('com_nav_export_include_endpoint_options')
                         : localize('com_nav_not_supported')}
-                    </Label>
+                    </label>
                   </div>
                 </div>
               </div>
@@ -151,15 +150,15 @@ export default function ExportModal({
                     onCheckedChange={setExportBranches}
                     aria-labelledby="exportBranches-label"
                   />
-                  <Label
+                  <label
                     id="exportBranches-label"
                     htmlFor="exportBranches"
-                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 dark:text-gray-50"
                   >
                     {exportBranchesSupport
                       ? localize('com_nav_export_all_message_branches')
                       : localize('com_nav_not_supported')}
-                  </Label>
+                  </label>
                 </div>
               </div>
               {type === 'json' ? (
@@ -174,13 +173,13 @@ export default function ExportModal({
                       onCheckedChange={setRecursive}
                       aria-labelledby="recursive-label"
                     />
-                    <Label
+                    <label
                       id="recursive-label"
                       htmlFor="recursive"
-                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 dark:text-gray-50"
                     >
                       {localize('com_nav_export_recursive')}
-                    </Label>
+                    </label>
                   </div>
                 </div>
               ) : null}

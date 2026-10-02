@@ -1,10 +1,6 @@
-import {
-  EModelEndpoint,
-  normalizeEndpointName,
-  materializeModelSpecEndpoints,
-} from 'librechat-data-provider';
-import type { TCustomConfig } from 'librechat-data-provider';
 import logger from '~/config/winston';
+import { EModelEndpoint, normalizeEndpointName } from 'librechat-data-provider';
+import type { TCustomConfig } from 'librechat-data-provider';
 
 /**
  * Sets up Model Specs from the config (`librechat.yaml`) file.
@@ -22,12 +18,7 @@ export function processModelSpecs(
     return undefined;
   }
 
-  /**
-   * Fill inferable endpoints (agent specs may omit one) before the
-   * missing-endpoint guard below, which would otherwise skip them.
-   */
-  const specsConfig = materializeModelSpecEndpoints(_modelSpecs);
-  const list = specsConfig.list;
+  const list = _modelSpecs.list;
   const modelSpecs: typeof list = [];
 
   const customEndpoints = endpoints?.[EModelEndpoint.custom] ?? [];
@@ -94,7 +85,7 @@ For more information, see the documentation at https://www.librechat.ai/docs/con
   }
 
   return {
-    ...specsConfig,
+    ..._modelSpecs,
     list: modelSpecs,
   };
 }

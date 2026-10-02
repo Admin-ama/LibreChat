@@ -17,7 +17,6 @@ function categorizeFile(
     source?: string;
     embedded?: boolean;
     metadata?: { fileIdentifier?: string; codeEnvRef?: unknown };
-    llmDeliveryPath?: 'provider' | 'text' | 'none';
   },
   isBedrock: boolean,
   mergedFileConfig: FileConfig | undefined,
@@ -25,9 +24,6 @@ function categorizeFile(
 ): 'images' | 'documents' | 'videos' | 'audios' | 'skipped' {
   const source = file.source ?? FileSources.local;
   if (source === FileSources.text) {
-    return 'skipped';
-  }
-  if (file.llmDeliveryPath === 'text' || file.llmDeliveryPath === 'none') {
     return 'skipped';
   }
   if (
@@ -151,28 +147,6 @@ describe('processAttachments — supportedMimeTypes routing logic', () => {
     const { merged, epConfig } = resolveConfig(['.*']);
     const result = categorizeFile(
       { type: 'text/csv', source: FileSources.text },
-      false,
-      merged,
-      epConfig,
-    );
-    expect(result).toBe('skipped');
-  });
-
-  it('should skip text-delivery markdown files regardless of config', () => {
-    const { merged, epConfig } = resolveConfig(['.*']);
-    const result = categorizeFile(
-      { type: 'text/markdown', llmDeliveryPath: 'text' },
-      false,
-      merged,
-      epConfig,
-    );
-    expect(result).toBe('skipped');
-  });
-
-  it('should skip none-delivery markdown files regardless of config', () => {
-    const { merged, epConfig } = resolveConfig(['.*']);
-    const result = categorizeFile(
-      { type: 'text/markdown', llmDeliveryPath: 'none' },
       false,
       merged,
       epConfig,

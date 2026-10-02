@@ -1,9 +1,10 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+
 import '@testing-library/jest-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type t from 'librechat-data-provider';
 import AgentGrid from '../AgentGrid';
+import type t from 'librechat-data-provider';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // Mock the marketplace agent query hook
 jest.mock('~/data-provider/Agents', () => ({
@@ -16,6 +17,11 @@ jest.mock('~/hooks/Agents', () => ({
     isLoading: false,
     error: null,
   })),
+}));
+
+// Mock SmartLoader
+jest.mock('../SmartLoader', () => ({
+  useHasData: jest.fn(() => true),
 }));
 
 // Mock useLocalize hook
@@ -353,25 +359,8 @@ describe('AgentGrid Integration with useGetMarketplaceAgentsQuery', () => {
       );
 
       // Should show loading spinner
-      const spinner = document.querySelector('.text-text-primary');
+      const spinner = document.querySelector('.text-primary');
       expect(spinner).toBeInTheDocument();
-    });
-
-    it('should retain cached agents while refetching', () => {
-      mockUseMarketplaceAgentsInfiniteQuery.mockReturnValue({
-        ...defaultMockQueryResult,
-        isFetching: true,
-      });
-
-      const Wrapper = createWrapper();
-      render(
-        <Wrapper>
-          <AgentGrid category="finance" searchQuery="" onSelectAgent={mockOnSelectAgent} />
-        </Wrapper>,
-      );
-
-      expect(screen.getByTestId('agent-card-1')).toBeInTheDocument();
-      expect(screen.getByTestId('agent-card-2')).toBeInTheDocument();
     });
 
     it('should show empty state when no agents are available', () => {

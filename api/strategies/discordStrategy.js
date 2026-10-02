@@ -1,5 +1,4 @@
 const { Strategy: DiscordStrategy } = require('passport-discord');
-const { createOAuthStateStore } = require('@librechat/api');
 const socialLogin = require('./socialLogin');
 
 const getProfileDetails = ({ profile }) => {
@@ -33,13 +32,9 @@ const getDiscordConfig = (callbackURL) => ({
   authorizationURL: 'https://discord.com/api/oauth2/authorize?prompt=none',
 });
 
-/** @param {Omit<import('@librechat/api').OAuthStateStoreOptions, 'provider'>} stateOptions */
-const discordStrategy = (stateOptions) =>
+const discordStrategy = () =>
   new DiscordStrategy(
-    {
-      ...getDiscordConfig(`${process.env.DOMAIN_SERVER}${process.env.DISCORD_CALLBACK_URL}`),
-      store: createOAuthStateStore({ ...stateOptions, provider: 'discord' }),
-    },
+    getDiscordConfig(`${process.env.DOMAIN_SERVER}${process.env.DISCORD_CALLBACK_URL}`),
     discordLogin,
   );
 

@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useRecoilCallback, useSetRecoilState } from 'recoil';
 import type { TAttachment, TFile, TFilePreview } from 'librechat-data-provider';
-import { useMessageContext } from '~/Providers/MessageContext';
 import { useFilePreview } from '~/data-provider';
 import { useShareContext } from '~/Providers';
 import store from '~/store';
@@ -62,36 +61,44 @@ export default function useAttachmentPreviewSync(
   attachment: TAttachment | undefined,
 ): UseAttachmentPreviewSyncResult {
   const setAttachmentsMap = useSetRecoilState(store.messageAttachmentsMap);
-  const { isSubmitting, messageId: contextMessageId } = useMessageContext();
-  /* `useRecoilCallback` writes without subscribing this hook to
-   * another message or file's pending→ready flag. */
+  /* `useRecoilCallback` reads/writes without subscribing this hook to
+   * the per-file_id flag — we only ever set it on the pending→ready
+   * edge, so subscribing would cause needless re-renders. */
   const flagJustResolved = useRecoilCallback(
     ({ set }) =>
-      (ownerId: string, id: string) => {
-        set(store.previewJustResolved([ownerId, id]), true);
+      (id: string) => {
+        set(store.previewJustResolved(id), true);
       },
     [],
   );
+  /* Capture `isAnySubmitting` at first render via a non-subscribing
+   * snapshot read. Mirrors `ToolArtifactCard`'s `mountedDuringStreamRef`
+   * pattern so this hook applies the same "is the user actively in a
+   * turn?" classification as the card itself. The ref is the gate that
+   * distinguishes a *fresh* deferred-preview resolution (auto-open
+   * eligible) from a *stale* DB-pending record resolving on a history
+   * load (auto-open must NOT fire — the user is scrolling old data,
+   * not awaiting a result). Without this gate, navigating back to a
+   * conversation whose immediate-persist snapshot left the message's
+   * attachments at `status: 'pending'` would re-trigger auto-open
+   * every time the polling layer caught up — which is exactly the
+   * pre-PR "panel pops open on every visit" UX the team explicitly
+   * removed. */
+  const readInitialIsSubmitting = useRecoilCallback(
+    ({ snapshot }) =>
+      () =>
+        snapshot.getLoadable(store.isSubmittingFamily(0)).valueMaybe() ?? false,
+    [],
+  );
+  const mountedDuringStreamRef = useRef<boolean | null>(null);
+  if (mountedDuringStreamRef.current === null) {
+    mountedDuringStreamRef.current = readInitialIsSubmitting();
+  }
+
   const file = (attachment ?? undefined) as Partial<TFile> | undefined;
   const fileId = file?.file_id;
   const baseStatus: 'pending' | 'ready' | 'failed' = file?.status ?? 'ready';
   const messageId = (attachment as Partial<TAttachment> | undefined)?.messageId;
-  const ownerMessageId = contextMessageId || messageId;
-  /** A reused row must observe the pending→ready edge for its current owner, not its last one. */
-  const streamRef = useRef({
-    ownerMessageId,
-    fileId,
-    wasSubmitting: isSubmitting === true,
-    previousStatus: null as 'pending' | 'ready' | 'failed' | null,
-  });
-  if (streamRef.current.ownerMessageId !== ownerMessageId || streamRef.current.fileId !== fileId) {
-    streamRef.current = {
-      ownerMessageId,
-      fileId,
-      wasSubmitting: isSubmitting === true,
-      previousStatus: null,
-    };
-  }
 
   const { shareId } = useShareContext();
   const enabled = !!fileId && baseStatus === 'pending';
@@ -106,31 +113,30 @@ export default function useAttachmentPreviewSync(
   const previewError = polled?.previewError ?? file?.previewError;
 
   /* Track the previous effective status so we can fire the
-   * pending→ready edge for the owning message and file. Two gates have to
+   * pending→ready edge exactly once per session. Two gates have to
    * pass for the auto-open flag to flip:
    *   1. We actually observed the transition (prev → curr).
-   *   2. This message mounted during its own active stream, not a
-   *      historical sibling displayed while another turn submits. A
+   *   2. The hook mounted during an active stream — i.e. the file is
+   *      part of the user's current turn, not a history load. A
    *      page-navigation mount (or refresh) of a stale-pending DB
    *      record will see the same transition when polling catches
    *      up, but we must NOT auto-open in that case — the user is
    *      revisiting old work, not waiting on a fresh result.
-   * The per-owner ref is reset before the effect when a different message
-   * or file takes this row, so a transition from the previous owner
-   * cannot be mistaken for a fresh preview. */
+   * Refs are read inline so the effect doesn't have to list them as
+   * deps (mutating a ref doesn't subscribe). */
+  const prevStatusRef = useRef<'pending' | 'ready' | 'failed' | null>(null);
   useEffect(() => {
-    const prev = streamRef.current.previousStatus;
-    streamRef.current.previousStatus = effectiveStatus;
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = effectiveStatus;
     if (
       prev === 'pending' &&
       effectiveStatus === 'ready' &&
       fileId &&
-      ownerMessageId &&
-      streamRef.current.wasSubmitting
+      mountedDuringStreamRef.current === true
     ) {
-      flagJustResolved(ownerMessageId, fileId);
+      flagJustResolved(fileId);
     }
-  }, [effectiveStatus, fileId, ownerMessageId, flagJustResolved]);
+  }, [effectiveStatus, fileId, flagJustResolved]);
 
   /* On a terminal poll response (ready or failed), upsert into the
    * shared attachments map. Mirrors the SSE handler's by-file_id

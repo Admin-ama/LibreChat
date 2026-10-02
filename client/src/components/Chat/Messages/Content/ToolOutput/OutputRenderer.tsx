@@ -1,7 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
 import copy from 'copy-to-clipboard';
-import { Button } from '@librechat/client';
-import { hasToolCallErrorPrefix, stripToolCallErrorPrefix } from 'librechat-data-provider';
 import CopyButton from '~/components/Messages/Content/CopyButton';
 import { useLocalize } from '~/hooks';
 import { cn } from '~/utils';
@@ -11,10 +9,11 @@ interface ContentBlock {
   text?: string;
 }
 
+const ERROR_PREFIX = /^Error:\s*(\[.*?\]\s*)*tool call failed:\s*/i;
 const ERROR_INNER = /^Error\s+\w+ing to endpoint\s*\(HTTP \d+\):\s*/i;
 
 function cleanError(text: string): string {
-  let cleaned = stripToolCallErrorPrefix(text).trim();
+  let cleaned = text.replace(ERROR_PREFIX, '').trim();
   cleaned = cleaned.replace(ERROR_INNER, '').trim();
   if (cleaned.endsWith('Please fix your mistakes.')) {
     cleaned = cleaned.slice(0, -'Please fix your mistakes.'.length).trim();
@@ -22,19 +21,8 @@ function cleanError(text: string): string {
   return cleaned;
 }
 
-/** The feedback a call gets when its input fails schema validation: the SDK
- *  returns it to the model as a plain `Error:` block closed by this sentence,
- *  with the run step still `completed`. Mirrors the server's own verdict in
- *  `completedToolExecutionStatus`, so a card, a group header and a phase
- *  agree with the label the server wrote for the same call. */
-const VALIDATION_FEEDBACK = /^Error:[\s\S]*\n Please fix your mistakes\.$/i;
-
 export function isError(text: string): boolean {
-  return (
-    hasToolCallErrorPrefix(text) ||
-    text.startsWith('Error processing tool') ||
-    VALIDATION_FEEDBACK.test(text)
-  );
+  return ERROR_PREFIX.test(text) || text.startsWith('Error processing tool');
 }
 
 function isStructuredText(text: string): boolean {
@@ -99,10 +87,9 @@ const VISIBLE_LINES = 15;
 
 interface OutputRendererProps {
   text: string;
-  copyText?: string;
 }
 
-export default function OutputRenderer({ text, copyText }: OutputRendererProps) {
+export default function OutputRenderer({ text }: OutputRendererProps) {
   const localize = useLocalize();
   const { text: displayText, rawError, error, isJson } = useMemo(() => extractText(text), [text]);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -111,9 +98,9 @@ export default function OutputRenderer({ text, copyText }: OutputRendererProps) 
 
   const handleCopy = useCallback(() => {
     setIsCopied(true);
-    copy(copyText ?? displayText, { format: 'text/plain' });
+    copy(displayText, { format: 'text/plain' });
     setTimeout(() => setIsCopied(false), 3000);
-  }, [copyText, displayText]);
+  }, [displayText]);
 
   if (!displayText) {
     return null;
@@ -126,57 +113,53 @@ export default function OutputRenderer({ text, copyText }: OutputRendererProps) 
   const structured = !isJson && isStructuredText(displayText);
 
   return (
-    <div>
-      <div className="relative pr-10">
-        {isJson ? (
-          <pre className="max-h-[300px] overflow-auto rounded text-xs">
-            <code className="hljs language-json !whitespace-pre-wrap !break-words">
-              {visibleText}
-            </code>
-          </pre>
-        ) : (
-          <pre
-            className={cn(
-              'max-h-[300px] overflow-auto whitespace-pre-wrap break-words text-xs',
-              error && 'font-mono text-status-error',
-              !error && structured && 'font-mono text-text-secondary',
-              !error && !structured && 'font-sans text-sm text-text-primary',
-            )}
-          >
+    <div className="relative">
+      {isJson ? (
+        <pre className="max-h-[300px] overflow-auto rounded text-xs">
+          <code className="hljs language-json !whitespace-pre-wrap !break-words">
             {visibleText}
-          </pre>
-        )}
-        <div className="absolute right-0 top-1/2 -translate-y-1/2">
-          <CopyButton
-            isCopied={isCopied}
-            onClick={handleCopy}
-            iconOnly
-            label={localize('com_ui_copy')}
-          />
-        </div>
+          </code>
+        </pre>
+      ) : (
+        <pre
+          className={cn(
+            'max-h-[300px] overflow-auto whitespace-pre-wrap break-words text-xs',
+            error && 'font-mono text-red-600 dark:text-red-400',
+            !error && structured && 'font-mono text-text-secondary',
+            !error && !structured && 'font-sans text-sm text-text-primary',
+          )}
+        >
+          {visibleText}
+        </pre>
+      )}
+      <div className="absolute bottom-0 right-0">
+        <CopyButton
+          isCopied={isCopied}
+          onClick={handleCopy}
+          iconOnly
+          label={localize('com_ui_copy')}
+        />
       </div>
       {needsTruncation && (
-        <Button
-          variant="link"
-          size="sm"
-          className="mt-1 h-auto p-0 text-xs text-text-secondary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-heavy"
+        <button
+          type="button"
+          className="mt-1 text-xs text-text-secondary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-heavy"
           onClick={() => setIsExpanded((prev) => !prev)}
         >
           {isExpanded ? localize('com_ui_show_less') : localize('com_ui_show_more')}
-        </Button>
+        </button>
       )}
       {error && rawError && rawError !== displayText && (
-        <Button
-          variant="link"
-          size="sm"
-          className="mt-1 block h-auto p-0 text-xs text-text-secondary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-heavy"
+        <button
+          type="button"
+          className="mt-1 block text-xs text-text-secondary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-heavy"
           onClick={() => setShowErrorDetails((prev) => !prev)}
         >
           {localize('com_ui_details')}
-        </Button>
+        </button>
       )}
       {showErrorDetails && rawError && (
-        <pre className="mt-2 max-h-[200px] overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-status-error">
+        <pre className="mt-2 max-h-[200px] overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-red-600 dark:text-red-400">
           {rawError}
         </pre>
       )}

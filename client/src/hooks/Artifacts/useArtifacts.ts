@@ -229,10 +229,7 @@ export default function useArtifacts() {
     }
     const latestArtifactId = orderedArtifactIds[orderedArtifactIds.length - 1];
     const latestArtifact = artifacts?.[latestArtifactId];
-    if (latestArtifact?.messageId !== latestMessageId) {
-      return;
-    }
-    if (latestArtifact.content === lastContentRef.current && !justFinishedSubmitting) {
+    if (latestArtifact?.content === lastContentRef.current && !justFinishedSubmitting) {
       return;
     }
     lastContentRef.current = latestArtifact?.content ?? null;

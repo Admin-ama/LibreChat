@@ -1,4 +1,3 @@
-import './polyfills/storage';
 import './polyfills/regeneratorRuntime';
 import { createRoot } from 'react-dom/client';
 import { initializeI18n } from './locales/i18n';

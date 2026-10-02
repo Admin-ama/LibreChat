@@ -4,7 +4,6 @@ import {
   flattenArtifactPath,
   resolveUploadErrorMessage,
 } from './files';
-import { UnsupportedProviderAudioError } from '~/files/upload/errors';
 
 jest.mock('node:crypto', () => {
   const actualModule = jest.requireActual('node:crypto');
@@ -504,14 +503,6 @@ describe('flattenArtifactPath', () => {
 });
 
 describe('resolveUploadErrorMessage', () => {
-  it.each([false, true])(
-    'preserves the localized audio preflight error (redaction=%s)',
-    (redact) => {
-      expect(
-        resolveUploadErrorMessage(new UnsupportedProviderAudioError(), undefined, redact),
-      ).toBe('com_error_files_provider_audio_format');
-    },
-  );
   test('returns default message for null error', () => {
     expect(resolveUploadErrorMessage(null)).toBe('Error processing file');
   });
@@ -530,89 +521,36 @@ describe('resolveUploadErrorMessage', () => {
     );
   });
 
-  test('preserves legacy file_ids error details by default', () => {
+  test('prepends default message for file_ids errors', () => {
     expect(resolveUploadErrorMessage({ message: 'max file_ids reached' })).toBe(
       'Error processing file: max file_ids reached',
     );
   });
 
-  test('maps file_ids errors to a fixed message when redaction is enabled', () => {
-    const rawMessage = 'max file_ids reached for PRIVATE-UPLOAD';
-    const result = resolveUploadErrorMessage({ message: rawMessage }, undefined, true);
-
-    expect(result).toBe('Error processing file: File limit reached');
-    expect(result).not.toContain('PRIVATE-UPLOAD');
-  });
-
-  test('preserves legacy "Invalid file format" details by default', () => {
+  test('surfaces "Invalid file format" errors', () => {
     expect(resolveUploadErrorMessage({ message: 'Invalid file format: .xyz' })).toBe(
       'Invalid file format: .xyz',
     );
   });
 
-  test('maps "Invalid file format" errors to a fixed message when redaction is enabled', () => {
-    const result = resolveUploadErrorMessage(
-      {
-        message: 'Invalid file format: PRIVATE-UPLOAD.xyz',
-      },
-      undefined,
-      true,
-    );
-
-    expect(result).toBe('Invalid file format');
-    expect(result).not.toContain('PRIVATE-UPLOAD');
-  });
-
-  test('preserves legacy "exceeds token limit" details by default', () => {
+  test('surfaces "exceeds token limit" errors', () => {
     expect(resolveUploadErrorMessage({ message: 'Content exceeds token limit' })).toBe(
       'Content exceeds token limit',
     );
   });
 
-  test('maps "exceeds token limit" errors to a fixed message when redaction is enabled', () => {
-    const result = resolveUploadErrorMessage(
-      {
-        message: 'PRIVATE-UPLOAD content exceeds token limit',
-      },
-      undefined,
-      true,
-    );
-
-    expect(result).toBe('File content exceeds token limit');
-    expect(result).not.toContain('PRIVATE-UPLOAD');
-  });
-
-  test('preserves legacy "Unable to extract text from" details by default', () => {
+  test('surfaces "Unable to extract text from" errors', () => {
     const msg = 'Unable to extract text from "doc.pdf". The document may be image-based.';
     expect(resolveUploadErrorMessage({ message: msg })).toBe(msg);
-  });
-
-  test('maps "Unable to extract text from" errors to a fixed message when redaction is enabled', () => {
-    const result = resolveUploadErrorMessage(
-      {
-        message: 'Unable to extract text from "PRIVATE-UPLOAD.pdf". Provider response followed.',
-      },
-      undefined,
-      true,
-    );
-
-    expect(result).toBe('Unable to extract text from file');
-    expect(result).not.toContain('PRIVATE-UPLOAD');
   });
 
   test('accepts a custom default message', () => {
     expect(resolveUploadErrorMessage(null, 'Custom default')).toBe('Custom default');
   });
 
-  test('uses custom default in the legacy file_ids message', () => {
+  test('uses custom default in file_ids prepend', () => {
     expect(resolveUploadErrorMessage({ message: 'file_ids limit' }, 'Upload failed')).toBe(
       'Upload failed: file_ids limit',
-    );
-  });
-
-  test('uses custom default in the redacted file_ids message', () => {
-    expect(resolveUploadErrorMessage({ message: 'file_ids limit' }, 'Upload failed', true)).toBe(
-      'Upload failed: File limit reached',
     );
   });
 });

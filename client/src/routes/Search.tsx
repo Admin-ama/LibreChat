@@ -308,7 +308,7 @@ export default function Search() {
           {resultsAnnouncement}
         </div>
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="rounded-lg bg-surface-secondary p-6 text-lg text-text-secondary">
+          <div className="rounded-lg bg-white p-6 text-lg text-gray-500 dark:border-gray-800/50 dark:bg-gray-800 dark:text-gray-300">
             {localize('com_ui_nothing_found')}
           </div>
         </div>
@@ -317,7 +317,7 @@ export default function Search() {
   }
 
   return (
-    <div className="relative flex h-full w-full flex-col bg-presentation pt-4">
+    <div className="relative flex h-full w-full flex-col bg-white pt-4 dark:bg-gray-800">
       <div className="sr-only" role="alert" aria-atomic="true">
         {resultsAnnouncement}
       </div>
@@ -333,10 +333,7 @@ export default function Search() {
           onRowsRendered={handleRowsRendered}
           overscanRowCount={10}
           aria-label={localize('com_nav_search_placeholder')}
-          className={cn(
-            'outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring-primary',
-            showingStale && 'opacity-70',
-          )}
+          className={cn('outline-none', showingStale && 'opacity-70')}
           style={{ outline: 'none' }}
         />
       </div>
@@ -345,7 +342,7 @@ export default function Search() {
           <Spinner className="text-text-primary" />
         </div>
       )}
-      <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-[5%] bg-gradient-to-t from-presentation to-transparent" />
+      <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-[5%] bg-gradient-to-t from-gray-50 to-transparent dark:from-gray-800" />
     </div>
   );
 }

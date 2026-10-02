@@ -95,6 +95,7 @@ const BookmarkEditDialog = ({
         main={
           <BookmarkForm
             tags={tags}
+            setOpen={setOpen}
             mutation={mutation}
             conversationId={conversationId}
             bookmark={bookmark}
@@ -107,6 +108,7 @@ const BookmarkEditDialog = ({
             type="submit"
             disabled={mutation.isLoading}
             onClick={handleSubmitForm}
+            className="text-white"
           >
             {mutation.isLoading ? <Spinner /> : localize('com_ui_save')}
           </Button>

@@ -1,5 +1,3 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { NEW_CHAT_PATH } from './helpers';
@@ -140,14 +138,6 @@ test.describe('deployment skills', () => {
   test('loads configured deployment skills for every authenticated user as read-only', async ({
     page,
   }) => {
-    const fixture = fs.readFileSync(
-      path.resolve(
-        __dirname,
-        '../../fixtures/deployment-skills',
-        DEPLOYMENT_SKILL_NAME,
-        'guide.txt',
-      ),
-    );
     await page.goto(NEW_CHAT_PATH, { timeout: 10000 });
     const token = await getAccessToken(page);
 
@@ -191,7 +181,7 @@ test.describe('deployment skills', () => {
       filename: 'guide.txt',
       source: 'deployment',
       mimeType: 'text/plain',
-      bytes: fixture.length,
+      bytes: 'deployment skill file fixture\n'.length,
       category: 'other',
       isExecutable: false,
     });
@@ -206,9 +196,9 @@ test.describe('deployment skills', () => {
       relativePath: 'guide.txt',
       filename: 'guide.txt',
       mimeType: 'text/plain',
-      bytes: fixture.length,
+      bytes: 'deployment skill file fixture\n'.length,
       isBinary: false,
-      content: fixture.toString('utf8'),
+      content: 'deployment skill file fixture\n',
     });
 
     const patch = await apiJson<{ message?: string }>(

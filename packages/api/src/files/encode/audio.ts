@@ -1,14 +1,8 @@
 import { Providers } from '@librechat/agents';
-import { isDocumentSupportedProvider, isOpenAILikeProvider } from 'librechat-data-provider';
+import { isDocumentSupportedProvider } from 'librechat-data-provider';
 import type { IMongoFile } from '@librechat/data-schemas';
 import type { ServerRequest, StrategyFunctions, AudioResult } from '~/types';
-import {
-  getFileStream,
-  getAudioFormat,
-  getConfiguredFileSizeLimit,
-  isAttachmentObjectNotFoundError,
-  isConfiguredProviderMediaType,
-} from './utils';
+import { getFileStream, getConfiguredFileSizeLimit } from './utils';
 import { validateAudio } from '~/files/validation';
 import { runGuardedEncode } from './memoryGuard';
 
@@ -17,7 +11,7 @@ import { runGuardedEncode } from './memoryGuard';
  * @param req - The request object
  * @param files - Array of audio files
  * @param params - Object containing provider and optional endpoint
- * @param params.provider - The provider to format for
+ * @param params.provider - The provider to format for (currently only google is supported)
  * @param params.endpoint - Optional endpoint name for file config lookup
  * @param getStrategyFunctions - Function to get strategy functions
  * @returns Promise that resolves to audio and file metadata
@@ -46,9 +40,6 @@ export async function encodeAndFormatAudios(
 
   for (const settledResult of results) {
     if (settledResult.status === 'rejected') {
-      if (isAttachmentObjectNotFoundError(settledResult.reason)) {
-        throw settledResult.reason;
-      }
       console.error('Audio processing failed:', settledResult.reason);
       continue;
     }
@@ -93,22 +84,13 @@ export async function encodeAndFormatAudios(
         mimeType: file.type,
         data: content,
       });
-    } else if (
-      provider === Providers.OPENROUTER ||
-      (isOpenAILikeProvider(provider) &&
-        isConfiguredProviderMediaType(req, { provider, endpoint }, file.type))
-    ) {
-      /** OpenAI-compatible `input_audio` part (OpenRouter, vLLM, and other gateways).
-       * Custom endpoints only get here when the admin listed audio types in the
-       * endpoint's `supportedMimeTypes`, since not every gateway accepts audio. */
-      /** Canonicalized from the MIME type: the accepted MIME list contains aliases
-       * (`audio/wave`, `audio/mpeg`) that are not valid format values, and the filename
-       * may carry no extension at all. */
-      const format = getAudioFormat(file.type, file.filename);
+    } else if (provider === Providers.OPENROUTER) {
+      // Extract format from filename extension (e.g., 'audio.mp3' -> 'mp3')
+      // OpenRouter expects format values like: wav, mp3, aiff, aac, ogg, flac, m4a, pcm16, pcm24
+      // Note: MIME types don't always match (e.g., 'audio/mpeg' is mp3, not mpeg), so that is why we are using the file extension instead
+      const format = file.filename.split('.').pop()?.toLowerCase();
       if (!format) {
-        throw new Error(
-          `Could not determine a supported audio format for "${file.filename}" (${file.type})`,
-        );
+        throw new Error(`Could not extract audio format from filename: ${file.filename}`);
       }
       result.audios.push({
         type: 'input_audio',

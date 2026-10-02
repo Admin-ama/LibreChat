@@ -80,12 +80,6 @@ export interface ChatCompletionRequest {
 /**
  * Token usage information
  */
-export interface CompletionUsageTotals {
-  prompt_tokens: number;
-  completion_tokens: number;
-  total_tokens: number;
-}
-
 export interface CompletionUsage {
   prompt_tokens: number;
   completion_tokens: number;
@@ -94,10 +88,6 @@ export interface CompletionUsage {
   completion_tokens_details?: {
     reasoning_tokens?: number;
   };
-  /** LibreChat extension for parent, handoff, and summarization model calls. */
-  primary?: CompletionUsageTotals;
-  /** LibreChat extension for isolated subagent child model calls. */
-  subagent?: CompletionUsageTotals;
 }
 
 /**

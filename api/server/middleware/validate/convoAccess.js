@@ -1,5 +1,4 @@
 const { isEnabled } = require('@librechat/api');
-const { logger } = require('@librechat/data-schemas');
 const { Constants, ViolationTypes, Time } = require('librechat-data-provider');
 const denyRequest = require('~/server/middleware/denyRequest');
 const { logViolation, getLogStores } = require('~/cache');
@@ -37,7 +36,6 @@ const validateConvoAccess = async (req, res, next) => {
   const conversationId = getConversationId(req.body);
 
   if (!conversationId || conversationId === Constants.NEW_CONVO) {
-    req.resolvedConversation = null;
     return next();
   }
 
@@ -48,23 +46,14 @@ const validateConvoAccess = async (req, res, next) => {
   try {
     if (cache) {
       const cachedAccess = await cache.get(key);
-      // An access marker contains no retention policy. Resolve it once at admission
-      // when independent deadlines are active, then reuse the document downstream.
-      const needsRetention =
-        req.config?.interfaceConfig?.retentionMode === 'all' &&
-        req.config.interfaceConfig.generalChatRetention !== undefined;
-      if (cachedAccess === 'authorized' && !needsRetention) {
+      if (cachedAccess === 'authorized') {
         return next();
       }
     }
 
-    /** One read serves the subagent guard, agent initialization, and the first save via
-     *  `req.resolvedConversation`. `messages` is the only unbounded field and no consumer
-     *  reads it, so it stays excluded — ownership is not yet known at this point. */
-    const conversation = await searchConversation(conversationId, '-messages');
+    const conversation = await searchConversation(conversationId);
 
     if (!conversation) {
-      req.resolvedConversation = null;
       return next();
     }
 
@@ -81,13 +70,8 @@ const validateConvoAccess = async (req, res, next) => {
     }
 
     if (cache) {
-      /** The marker only short-circuits the next check; the violations store is file-backed
-       *  without Redis and its debounced write takes ~100ms, so it must not gate this request. */
-      cache.set(key, 'authorized', Time.TEN_MINUTES).catch((error) => {
-        logger.warn('[validateConvoAccess] Failed to cache conversation access', error);
-      });
+      await cache.set(key, 'authorized', Time.TEN_MINUTES);
     }
-    req.resolvedConversation = conversation;
     next();
   } catch (error) {
     console.error('Error validating conversation access:', error);

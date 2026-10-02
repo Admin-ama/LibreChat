@@ -4,46 +4,6 @@ export const QUOTE_MAX_LENGTH = 1500;
 /** Max number of quoted excerpts merged into a single user turn. */
 export const QUOTE_MAX_COUNT = 10;
 
-export interface ReferencedQuoteEntry {
-  readonly sourceIndex: number;
-  readonly text: string;
-}
-
-function toQuoteText(text: string): string {
-  return text;
-}
-
-function toQuoteEntry(text: string, sourceIndex: number): ReferencedQuoteEntry {
-  return { sourceIndex, text };
-}
-
-function normalizeReferencedQuotes<T>(
-  raw: unknown,
-  createValue: (text: string, sourceIndex: number) => T,
-): T[] | null {
-  if (!Array.isArray(raw)) {
-    return null;
-  }
-
-  const quotes: T[] = [];
-  for (let sourceIndex = 0; sourceIndex < raw.length; sourceIndex++) {
-    const item: unknown = raw[sourceIndex];
-    if (typeof item !== 'string') {
-      continue;
-    }
-    const trimmed = item.trim();
-    if (trimmed.length === 0) {
-      continue;
-    }
-    quotes.push(createValue(trimmed.slice(0, QUOTE_MAX_LENGTH), sourceIndex));
-    if (quotes.length >= QUOTE_MAX_COUNT) {
-      break;
-    }
-  }
-
-  return quotes.length > 0 ? quotes : null;
-}
-
 /**
  * Normalizes the `quotes` field off a request body into a clean string array.
  * Trims, drops empties/non-strings, caps each excerpt length and the overall
@@ -51,12 +11,26 @@ function normalizeReferencedQuotes<T>(
  * merge entirely.
  */
 export function getReferencedQuotes(raw: unknown): string[] | null {
-  return normalizeReferencedQuotes(raw, toQuoteText);
-}
+  if (!Array.isArray(raw)) {
+    return null;
+  }
 
-/** Normalizes quotes while retaining their source-array positions. */
-export function getReferencedQuoteEntries(raw: unknown): ReferencedQuoteEntry[] | null {
-  return normalizeReferencedQuotes(raw, toQuoteEntry);
+  const quotes: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== 'string') {
+      continue;
+    }
+    const trimmed = item.trim();
+    if (trimmed.length === 0) {
+      continue;
+    }
+    quotes.push(trimmed.slice(0, QUOTE_MAX_LENGTH));
+    if (quotes.length >= QUOTE_MAX_COUNT) {
+      break;
+    }
+  }
+
+  return quotes.length > 0 ? quotes : null;
 }
 
 /** Formats one excerpt as a Markdown blockquote, prefixing every line. */

@@ -54,7 +54,8 @@ const getCloseRange = (
   }
 
   const markerStart = lineStart + contentStart;
-  if (!text.startsWith(ARTIFACT_END, markerStart) || text.startsWith(ARTIFACT_START, markerStart)) {
+  const markerText = text.slice(markerStart);
+  if (!markerText.startsWith(ARTIFACT_END) || markerText.startsWith(ARTIFACT_START)) {
     return null;
   }
 
@@ -212,38 +213,8 @@ const replaceRange = (
   return originalText.substring(0, start) + updated + separator + endText;
 };
 
-const isClosingArtifactFenceAt = (text: string, start: number): boolean => {
-  const marker = text[start];
-  if (marker !== '`' && marker !== '~') {
-    return false;
-  }
-
-  let markerEnd = start + 1;
-  while (markerEnd < text.length && text[markerEnd] === marker) {
-    markerEnd++;
-  }
-  if (markerEnd - start < 3) {
-    return false;
-  }
-
-  let hasLineBreak = false;
-  for (let i = markerEnd; i < text.length; i++) {
-    if (text[i] === '\n') {
-      hasLineBreak = true;
-      continue;
-    }
-    if (/\s/.test(text[i])) {
-      continue;
-    }
-    return hasLineBreak && text.startsWith(ARTIFACT_END, i);
-  }
-  return false;
-};
-
 const normalizeBeforeClosingArtifactFence = (text: string): string =>
-  text.replace(/\n{2,}/g, (newlines, offset: number) =>
-    isClosingArtifactFenceAt(text, offset + newlines.length) ? '\n' : newlines,
-  );
+  text.replace(/\n+(?=(?:`{3,}|~{3,})\s*\n\s*:::)/g, '\n');
 
 export const findAllArtifacts = (message: ArtifactMessage): ArtifactBoundary[] => {
   const artifacts: ArtifactBoundary[] = [];

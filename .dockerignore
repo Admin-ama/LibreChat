@@ -9,6 +9,9 @@
 # Specific patterns to ignore
 data-node
 meili_data*
+logs
+uploads
+skill
 librechat*
 Dockerfile*
 docs

@@ -1,12 +1,7 @@
 import { z } from 'zod';
-import type { EndpointFileConfig, FileConfig, RegexLike } from './types/files';
-import type { ResponsesApiRouting } from './types';
+import type { EndpointFileConfig, FileConfig } from './types/files';
 import { EModelEndpoint, isAgentsEndpoint, isDocumentSupportedProvider } from './schemas';
-import { gpt6Tier, gptPointReleaseFamily } from './families';
 import { normalizeEndpointName } from './utils';
-
-/** Parallel storage deletions during rollback of a failed skill archive import. */
-export const DEFAULT_SKILL_IMPORT_CLEANUP_CONCURRENCY = 8;
 
 export const supportsFiles = {
   [EModelEndpoint.openAI]: true,
@@ -44,7 +39,6 @@ export const fullMimeTypesList = [
   'application/pdf',
   'text/x-php',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  'application/vnd.openxmlformats-officedocument.presentationml.template',
   'text/x-python',
   'text/x-script.python',
   'text/x-ruby',
@@ -112,7 +106,6 @@ export const codeInterpreterMimeTypesList = [
   'application/pdf',
   'text/x-php',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  'application/vnd.openxmlformats-officedocument.presentationml.template',
   'text/x-python',
   'text/x-script.python',
   'text/x-ruby',
@@ -146,7 +139,6 @@ export const retrievalMimeTypesList = [
   'application/pdf',
   'text/x-php',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  'application/vnd.openxmlformats-officedocument.presentationml.template',
   'text/x-python',
   'text/x-script.python',
   'text/x-ruby',
@@ -180,104 +172,6 @@ export const bedrockDocumentFormats: Record<string, BedrockDocumentFormat> = {
   'text/html': 'html',
   'text/plain': 'txt',
   'text/markdown': 'md',
-};
-
-/**
- * Whether an upload belongs to the conversation rather than to the agent. The value
- * arrives from multipart form data, so it can be the string "false", which is truthy.
- * Shared so the route, the authorization check and processing cannot disagree about it.
- */
-export const isMessageFileUpload = (value?: boolean | string | null): boolean =>
-  value === true || value === 'true';
-
-/**
- * Whether the upload's conversation uses the Responses API, which decides whether Azure
- * can carry a document natively. Multipart form data has no booleans, so it arrives as
- * the string "true".
- */
-export const isResponsesApiUpload = (value?: boolean | string | null): boolean =>
-  value === true || value === 'true';
-
-/**
- * The name a file carries inside the code sandbox.
- *
- * Image uploads are converted to the configured output type while the record keeps the
- * original filename, so the extension has to follow the stored bytes or the sandbox
- * decoder is handed a mismatch. Provisioning and priming both resolve the mount path
- * from here: deriving it twice under different rules leaves a later turn advertising a
- * path that does not exist in the sandbox.
- */
-export const resolveSandboxFilename = (filename: string, mimeType?: string | null): string => {
-  if (!mimeType?.startsWith('image/')) {
-    return filename;
-  }
-  const subtype = mimeType.slice('image/'.length);
-  if (!['webp', 'png', 'jpeg', 'gif'].includes(subtype)) {
-    return filename;
-  }
-  const accepted = subtype === 'jpeg' ? ['.jpg', '.jpeg'] : [`.${subtype}`];
-  const lastDot = filename.lastIndexOf('.');
-  const currentExt = lastDot > 0 ? filename.slice(lastDot).toLowerCase() : '';
-  if (accepted.includes(currentExt)) {
-    return filename;
-  }
-  const base = lastDot > 0 ? filename.slice(0, lastDot) : filename;
-  return `${base}${accepted[0]}`;
-};
-
-/**
- * The Responses setting a turn actually runs on. A saved agent's own record wins, since
- * execution reads its model parameters; a conversation only answers for itself. Upload
- * and delivery must agree here, or a document is stored as raw provider content and then
- * re-resolved to text it has no extraction for.
- */
-export const resolveUseResponsesApi = (
-  agentValue?: boolean | null,
-  conversationValue?: boolean | null,
-): boolean | undefined => agentValue ?? conversationValue ?? undefined;
-
-/** Models whose native OpenAI and Azure execution defaults to Responses. Keep
- * this shared with client upload routing so documents follow the API that the
- * backend will actually invoke. Explicit false remains an opt-out. */
-export const prefersResponsesApiByModel = (model?: string | null): boolean =>
-  gpt6Tier(model) != null;
-
-/** The server has transport and administrator settings the browser cannot see.
- * Missing policy never enables model-based uploads (including during upgrades). */
-export const resolveEffectiveUseResponsesApi = ({
-  value,
-  endpoint,
-  model,
-  routing,
-  webSearch,
-}: {
-  value?: boolean | null;
-  endpoint?: string | null;
-  model?: string | null;
-  routing?: ResponsesApiRouting;
-  webSearch?: boolean | null;
-}): boolean | undefined => {
-  if (endpoint !== EModelEndpoint.openAI && endpoint !== EModelEndpoint.azureOpenAI) {
-    return value ?? undefined;
-  }
-  let policy = model ? routing?.[model] : undefined;
-  /** A native point release follows its family until the server lists it. Azure
-   * routing is keyed by configured deployments, so a family's policy there says
-   * nothing about a release that is not deployed. */
-  const releaseFamily =
-    endpoint === EModelEndpoint.openAI && model ? gptPointReleaseFamily(model) : undefined;
-  if (!policy && releaseFamily) {
-    policy = routing?.[releaseFamily];
-  }
-  const tier = gpt6Tier(model);
-  if (!policy && tier) {
-    policy = routing?.[`gpt-6-${tier}-*`];
-  }
-  policy ??= routing?.['*'];
-  if (!policy) return value ?? undefined;
-  if (webSearch && policy.withWebSearch) policy = policy.withWebSearch;
-  if (value == null) return policy.default;
-  return value ? policy.on : policy.off;
 };
 
 export const isBedrockDocumentType = (mimeType?: string): boolean =>
@@ -323,7 +217,7 @@ export const textMimeTypes =
   /^(text\/(x-c|x-csharp|tab-separated-values|x-c\+\+|x-h|x-java|html|markdown|x-php|x-python|x-script\.python|x-ruby|x-tex|plain|css|vtt|javascript|csv|xml|calendar))$/;
 
 export const applicationMimeTypes =
-  /^(application\/(epub\+zip|csv|json|msword|pdf|x-tar|x-sh|x-zip-compressed|typescript|sql|yaml|x-parquet|vnd\.apache\.parquet|vnd\.coffeescript|vnd\.openxmlformats-officedocument\.(wordprocessingml\.document|presentationml\.(presentation|template)|spreadsheetml\.sheet)|vnd\.oasis\.opendocument\.(text|spreadsheet|presentation|graphics)|xml|zip))$/;
+  /^(application\/(epub\+zip|csv|json|msword|pdf|x-tar|x-sh|x-zip-compressed|typescript|sql|yaml|x-parquet|vnd\.apache\.parquet|vnd\.coffeescript|vnd\.openxmlformats-officedocument\.(wordprocessingml\.document|presentationml\.presentation|spreadsheetml\.sheet)|vnd\.oasis\.opendocument\.(text|spreadsheet|presentation|graphics)|xml|zip))$/;
 
 export const imageMimeTypes = /^image\/(jpeg|gif|png|webp|heic|heif)$/;
 
@@ -337,7 +231,6 @@ export const defaultOCRMimeTypes = [
   excelMimeTypes,
   /^application\/pdf$/,
   /^application\/vnd\.openxmlformats-officedocument\.(wordprocessingml\.document|presentationml\.presentation)$/,
-  /^application\/vnd\.openxmlformats-officedocument\.presentationml\.template$/,
   /^application\/vnd\.ms-(word|powerpoint)$/,
   /^application\/epub\+zip$/,
   /^application\/vnd\.oasis\.opendocument\.(text|spreadsheet|presentation|graphics)$/,
@@ -501,7 +394,6 @@ export const codeTypeMapping: { [key: string]: string } = {
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx - Excel
   ppt: 'application/vnd.ms-powerpoint', // .ppt - PowerPoint (legacy)
   pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx - PowerPoint
-  potx: 'application/vnd.openxmlformats-officedocument.presentationml.template', // .potx - PowerPoint template
   ics: 'text/calendar', // .ics - iCalendar
   ical: 'text/calendar', // .ical - iCalendar
   ifb: 'text/calendar', // .ifb - iCalendar free/busy
@@ -519,10 +411,6 @@ export const mimeTypeAliases: Readonly<Record<string, string>> = {
   'application/x-zip-compressed': 'application/zip',
   'text/x-python-script': 'text/x-python',
   'text/x-markdown': 'text/markdown',
-  /** freedesktop shared-mime-info (Chrome on Linux) */
-  'application/x-shellscript': 'application/x-sh',
-  /** libmagic, i.e. `file --mime-type` */
-  'text/x-shellscript': 'application/x-sh',
 };
 
 /**
@@ -543,7 +431,7 @@ export function inferMimeType(fileName: string, currentType: string): string {
 
 export const retrievalMimeTypes = [
   /^(text\/(x-c|x-c\+\+|x-h|html|x-java|markdown|x-php|x-python|x-script\.python|x-ruby|x-tex|plain|vtt|xml))$/,
-  /^(application\/(json|pdf|vnd\.openxmlformats-officedocument\.(wordprocessingml\.document|presentationml\.(presentation|template))))$/,
+  /^(application\/(json|pdf|vnd\.openxmlformats-officedocument\.(wordprocessingml\.document|presentationml\.presentation)))$/,
 ];
 
 export const megabyte = 1024 * 1024;
@@ -553,8 +441,6 @@ export const mbToBytes = (mb: number): number => mb * megabyte;
 const defaultSizeLimit = mbToBytes(512);
 const defaultSkillImportSizeLimit = mbToBytes(50);
 const defaultTokenLimit = 100000;
-const defaultContextSizeLimit = mbToBytes(128);
-const defaultContextCharLimit = 1_000_000;
 const assistantsFileConfig = {
   fileLimit: 10,
   fileSizeLimit: defaultSizeLimit,
@@ -585,19 +471,15 @@ export const fileConfig = {
   },
   skills: {
     fileSizeLimit: defaultSkillImportSizeLimit,
-    importCleanupConcurrency: DEFAULT_SKILL_IMPORT_CLEANUP_CONCURRENCY,
   },
   serverFileSizeLimit: defaultSizeLimit,
   avatarSizeLimit: mbToBytes(2),
   fileTokenLimit: defaultTokenLimit,
-  fileContextSizeLimit: defaultContextSizeLimit,
-  fileContextCharLimit: defaultContextCharLimit,
   clientImageResize: {
     enabled: false,
     maxWidth: 1900,
     maxHeight: 1900,
     quality: 0.92,
-    enforced: false,
   },
   ocr: {
     supportedMimeTypes: defaultOCRMimeTypes,
@@ -608,35 +490,12 @@ export const fileConfig = {
   stt: {
     supportedMimeTypes: defaultSTTMimeTypes,
   },
-  checkType: function (fileType: string, supportedTypes: RegexLike[] = supportedMimeTypes) {
+  checkType: function (fileType: string, supportedTypes: RegExp[] = supportedMimeTypes) {
     return supportedTypes.some((regex) => regex.test(fileType));
   },
 };
 
-const supportedMimeTypesSchema = z
-  .array(
-    z.string().superRefine((pattern, context) => {
-      try {
-        compileMimeRegex(pattern);
-      } catch {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'Invalid MIME type regex: not supported by the configured regex engine',
-        });
-      }
-    }),
-  )
-  .optional();
-
-export const DefaultLLMDeliveryPath = z.enum(['provider', 'text', 'none']);
-export type TDefaultLLMDeliveryPath = z.infer<typeof DefaultLLMDeliveryPath>;
-
-export const defaultLLMDeliveryPathSchema = z.object({
-  fallback: DefaultLLMDeliveryPath.optional(),
-  overrides: z.record(DefaultLLMDeliveryPath).optional(),
-});
-export type TDefaultLLMDeliveryPathConfig = z.infer<typeof defaultLLMDeliveryPathSchema>;
-type TDeliveryPathOverrides = NonNullable<TDefaultLLMDeliveryPathConfig['overrides']>;
+const supportedMimeTypesSchema = z.array(z.string()).optional();
 
 export const endpointFileConfigSchema = z.object({
   disabled: z.boolean().optional(),
@@ -644,14 +503,10 @@ export const endpointFileConfigSchema = z.object({
   fileSizeLimit: z.number().min(0).optional(),
   totalSizeLimit: z.number().min(0).optional(),
   supportedMimeTypes: supportedMimeTypesSchema.optional(),
-  defaultLLMDeliveryPath: defaultLLMDeliveryPathSchema.optional(),
-  legacyFileUploadUX: z.boolean().optional(),
-  textFallbackWithoutTools: z.boolean().optional(),
 });
 
 const skillFileConfigSchema = z.object({
   fileSizeLimit: z.number().min(0).optional(),
-  importCleanupConcurrency: z.number().int().positive().optional(),
 });
 
 export const fileConfigSchema = z.object({
@@ -660,9 +515,6 @@ export const fileConfigSchema = z.object({
   serverFileSizeLimit: z.number().min(0).optional(),
   avatarSizeLimit: z.number().min(0).optional(),
   fileTokenLimit: z.number().min(0).optional(),
-  fileContextSizeLimit: z.number().min(0).optional(),
-  fileContextCharLimit: z.number().min(0).optional(),
-  codeEnvLivenessSafeWindowMs: z.number().min(0).optional(),
   imageGeneration: z
     .object({
       percentage: z.number().min(0).max(100).optional(),
@@ -672,8 +524,8 @@ export const fileConfigSchema = z.object({
   clientImageResize: z
     .object({
       enabled: z.boolean().optional(),
-      maxWidth: z.number().min(1).optional(),
-      maxHeight: z.number().min(1).optional(),
+      maxWidth: z.number().min(0).optional(),
+      maxHeight: z.number().min(0).optional(),
       quality: z.number().min(0).max(1).optional(),
     })
     .optional(),
@@ -687,69 +539,28 @@ export const fileConfigSchema = z.object({
       supportedMimeTypes: supportedMimeTypesSchema.optional(),
     })
     .optional(),
-  defaultLLMDeliveryPath: defaultLLMDeliveryPathSchema.optional(),
-  legacyFileUploadUX: z.boolean().optional(),
-  textFallbackWithoutTools: z.boolean().optional(),
 });
 
 export type TFileConfig = z.infer<typeof fileConfigSchema>;
 
-/**
- * Compiler for admin-supplied MIME patterns. Defaults to native `RegExp`, which browser
- * builds keep so no extra dependency is bundled. The server swaps in a linear-time engine
- * via `setFileConfigRegexCompiler` so an admin-authored catastrophic-backtracking pattern
- * cannot ReDoS the shared event loop when tested against an uploaded file's MIME type.
- */
-let compileMimeRegex: (pattern: string) => RegexLike = (pattern) => new RegExp(pattern);
-
-/** Override the MIME-pattern compiler; the server injects a linear-time engine at startup. */
-export const setFileConfigRegexCompiler = (compile: (pattern: string) => RegexLike): void => {
-  compileMimeRegex = compile;
-};
-
-/** Returned when every configured pattern fails to compile, so consumers that read an empty
- *  allowlist as "no restriction" fail closed instead of allowing every file. */
-const rejectAllMimeMatcher: RegexLike = { test: () => false };
-
-/** Helper function to safely convert string patterns to matcher objects */
-export const convertStringsToRegex = (patterns: string[]): RegexLike[] => {
-  const compiled = patterns.reduce((acc: RegexLike[], pattern) => {
+/** Helper function to safely convert string patterns to RegExp objects */
+export const convertStringsToRegex = (patterns: string[]): RegExp[] =>
+  patterns.reduce((acc: RegExp[], pattern) => {
     try {
-      acc.push(compileMimeRegex(pattern));
+      const regex = new RegExp(pattern);
+      acc.push(regex);
     } catch (error) {
       console.error(`Invalid regex pattern "${pattern}" skipped.`, error);
     }
     return acc;
-  }, [] as RegexLike[]);
-  // Every configured pattern was dropped. Return an explicit reject-all matcher so consumers that
-  // read an empty allowlist as "no restriction" fail closed instead of allowing every file.
-  if (patterns.length > 0 && compiled.length === 0) {
-    console.error(
-      `All ${patterns.length} MIME type pattern(s) were invalid and skipped; the resulting allowlist rejects every file.`,
-    );
-    return [rejectAllMimeMatcher];
-  }
-  return compiled;
-};
+  }, []);
 
 /** Detects whether the given MIME type patterns accept all file types (e.g., `.*` or `.+`). */
-export const isPermissiveMimeConfig = (types?: RegexLike[]): boolean => {
+export const isPermissiveMimeConfig = (types?: RegExp[]): boolean => {
   if (!types || types.length === 0) {
     return false;
   }
   return types.some((regex) => regex.test('x-librechat/x-probe'));
-};
-
-/**
- * Detects whether an endpoint's `supportedMimeTypes` were set by the admin rather than inherited
- * from the built-in default list. Inheritance is signaled by referential identity with
- * `supportedMimeTypes`, which `mergeWithDefault` preserves for unconfigured endpoints.
- */
-export const isExplicitMimeConfig = (types?: RegexLike[]): types is RegexLike[] => {
-  if (!types || types.length === 0) {
-    return false;
-  }
-  return types !== supportedMimeTypes;
 };
 
 /** The kind of content a provider upload path can actually send to the model. */
@@ -845,7 +656,6 @@ const documentMimeExtensions: ReadonlyArray<readonly [string, readonly string[]]
   ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', ['.xlsx']],
   ['application/vnd.ms-powerpoint', ['.ppt']],
   ['application/vnd.openxmlformats-officedocument.presentationml.presentation', ['.pptx']],
-  ['application/vnd.openxmlformats-officedocument.presentationml.template', ['.potx']],
   ['application/vnd.oasis.opendocument.text', ['.odt']],
   ['application/vnd.oasis.opendocument.spreadsheet', ['.ods']],
   ['application/vnd.oasis.opendocument.presentation', ['.odp']],
@@ -868,13 +678,6 @@ const documentMimeExtensions: ReadonlyArray<readonly [string, readonly string[]]
   ['text/calendar', ['.ics']],
   ['message/rfc822', ['.eml']],
 ];
-
-/** Preferred extension for a known document MIME type, including its leading dot. */
-export function getDocumentFileExtension(mimeType?: string): string | undefined {
-  const normalized = mimeType?.split(';', 1)[0].trim().toLowerCase();
-  const canonical = normalized === 'text/comma-separated-values' ? 'text/csv' : normalized;
-  return documentMimeExtensions.find(([type]) => type === canonical)?.[1][0];
-}
 
 const documentMimeSet = new Set(documentMimeExtensions.map(([mimeType]) => mimeType));
 
@@ -911,7 +714,7 @@ const isRepresentable = (mimeType: string): boolean =>
  * picker never hides a file the path would have accepted.
  */
 const buildMimeAccept = (
-  types: RegexLike[],
+  types: RegExp[],
   { categories, documentMimeTypes }: MimeUploadCapability,
 ): string | undefined => {
   const permittedSet = new Set<MimeUploadCategory>(categories);
@@ -989,7 +792,7 @@ const buildMimeAccept = (
  * `supportedMimeTypes` on upload.
  */
 export const getConfiguredMimeAccept = (
-  types: RegexLike[] | undefined,
+  types: RegExp[] | undefined,
   capability: MimeUploadCapability,
 ): string | undefined => {
   /** Referential identity with the built-in list signals an unconfigured endpoint (keep provider filter). */
@@ -1031,81 +834,7 @@ function mergeWithDefault(
     fileSizeLimit: endpointConfig.fileSizeLimit ?? defaultConfig.fileSizeLimit,
     totalSizeLimit: endpointConfig.totalSizeLimit ?? defaultConfig.totalSizeLimit,
     supportedMimeTypes: endpointConfig.supportedMimeTypes ?? defaultMimeTypes,
-    defaultLLMDeliveryPath: mergeDeliveryPathConfig(
-      endpointConfig.defaultLLMDeliveryPath,
-      defaultConfig.defaultLLMDeliveryPath,
-    ),
-    legacyFileUploadUX: endpointConfig.legacyFileUploadUX ?? defaultConfig.legacyFileUploadUX,
-    textFallbackWithoutTools:
-      endpointConfig.textFallbackWithoutTools ?? defaultConfig.textFallbackWithoutTools,
   };
-}
-
-/**
- * Deep-merges delivery-path config so an endpoint that supplies only one override
- * still inherits the default's fallback and shared overrides. Whole-object
- * replacement would silently drop the inherited routing.
- */
-function mergeDeliveryPathConfig(
-  endpointValue?: TDefaultLLMDeliveryPathConfig,
-  defaultValue?: TDefaultLLMDeliveryPathConfig,
-): TDefaultLLMDeliveryPathConfig | undefined {
-  if (!endpointValue) {
-    return defaultValue;
-  }
-  if (!defaultValue) {
-    return endpointValue;
-  }
-  /* An endpoint fallback terminates resolution after that endpoint's own overrides,
-   * so inheriting the lower layer's overrides would promote them above it. Only when
-   * the endpoint declares no fallback does resolution continue downward, and then the
-   * merged map reproduces the chain exactly: endpoint overrides, default overrides,
-   * default fallback. */
-  if (endpointValue.fallback != null) {
-    return endpointValue;
-  }
-  const hasOverrides = endpointValue.overrides != null || defaultValue.overrides != null;
-  return {
-    ...(defaultValue.fallback != null ? { fallback: defaultValue.fallback } : {}),
-    ...(hasOverrides
-      ? { overrides: { ...shadowByWildcard(defaultValue.overrides, endpointValue.overrides) } }
-      : {}),
-  };
-}
-
-/**
- * Flattens two override layers into one map that still resolves like the layered chain.
- * Resolution reads exact keys before wildcards, so a plain spread would let a lower
- * layer's `image/png` outrank the upper layer's `image/*`. Dropping the entries an
- * upper wildcard covers restores precedence without changing how lookups work.
- */
-function shadowByWildcard(
-  lower?: TDeliveryPathOverrides,
-  upper?: TDeliveryPathOverrides,
-): TDeliveryPathOverrides {
-  if (!lower) {
-    return { ...upper };
-  }
-  const upperWildcards = new Set<string>();
-  for (const key in upper) {
-    if (key.endsWith('/*')) {
-      upperWildcards.add(key.slice(0, -1));
-    }
-  }
-  if (upperWildcards.size === 0) {
-    return { ...lower, ...upper };
-  }
-  const retained: TDeliveryPathOverrides = {};
-  for (const key in lower) {
-    const isShadowed =
-      !key.endsWith('/*') &&
-      upperWildcards.has(key.slice(0, key.indexOf('/') + 1)) &&
-      upper?.[key] == null;
-    if (!isShadowed) {
-      retained[key] = lower[key];
-    }
-  }
-  return { ...retained, ...upper };
 }
 
 export function getEndpointFileConfig(params: {
@@ -1120,21 +849,11 @@ export function getEndpointFileConfig(params: {
   }
 
   /** Compute an effective default by merging user-configured default over the base default */
-  const baseDefaultConfig: EndpointFileConfig = fileConfig.endpoints.default;
-  const globalDefaultConfig: EndpointFileConfig = {
-    ...baseDefaultConfig,
-    defaultLLMDeliveryPath: mergeDeliveryPathConfig(
-      mergedFileConfig.defaultLLMDeliveryPath,
-      baseDefaultConfig.defaultLLMDeliveryPath,
-    ),
-    legacyFileUploadUX: mergedFileConfig.legacyFileUploadUX ?? baseDefaultConfig.legacyFileUploadUX,
-    textFallbackWithoutTools:
-      mergedFileConfig.textFallbackWithoutTools ?? baseDefaultConfig.textFallbackWithoutTools,
-  };
+  const baseDefaultConfig = fileConfig.endpoints.default;
   const userDefaultConfig = mergedFileConfig.endpoints.default;
   const defaultConfig = userDefaultConfig
-    ? mergeWithDefault(userDefaultConfig, globalDefaultConfig, 'default')
-    : globalDefaultConfig;
+    ? mergeWithDefault(userDefaultConfig, baseDefaultConfig, 'default')
+    : baseDefaultConfig;
 
   const normalizedEndpoint = normalizeEndpointName(endpoint ?? '');
   const standardEndpoints = new Set([
@@ -1246,18 +965,6 @@ export function mergeFileConfig(dynamic: z.infer<typeof fileConfigSchema> | unde
     return mergedConfig;
   }
 
-  if (dynamic.defaultLLMDeliveryPath !== undefined) {
-    mergedConfig.defaultLLMDeliveryPath = dynamic.defaultLLMDeliveryPath;
-  }
-
-  if (dynamic.legacyFileUploadUX !== undefined) {
-    mergedConfig.legacyFileUploadUX = dynamic.legacyFileUploadUX;
-  }
-
-  if (dynamic.textFallbackWithoutTools !== undefined) {
-    mergedConfig.textFallbackWithoutTools = dynamic.textFallbackWithoutTools;
-  }
-
   if (dynamic.serverFileSizeLimit !== undefined) {
     mergedConfig.serverFileSizeLimit = mbToBytes(dynamic.serverFileSizeLimit);
   }
@@ -1270,21 +977,6 @@ export function mergeFileConfig(dynamic: z.infer<typeof fileConfigSchema> | unde
     mergedConfig.fileTokenLimit = dynamic.fileTokenLimit;
   }
 
-  if (dynamic.fileContextSizeLimit !== undefined) {
-    mergedConfig.fileContextSizeLimit = mbToBytes(dynamic.fileContextSizeLimit);
-  }
-
-  if (dynamic.fileContextCharLimit !== undefined) {
-    mergedConfig.fileContextCharLimit = dynamic.fileContextCharLimit;
-  }
-
-  if (dynamic.skills?.importCleanupConcurrency !== undefined) {
-    mergedConfig.skills = {
-      ...mergedConfig.skills,
-      importCleanupConcurrency: dynamic.skills.importCleanupConcurrency,
-    };
-  }
-
   if (dynamic.skills?.fileSizeLimit !== undefined) {
     mergedConfig.skills = {
       ...mergedConfig.skills,
@@ -1292,12 +984,11 @@ export function mergeFileConfig(dynamic: z.infer<typeof fileConfigSchema> | unde
     };
   }
 
-  // Merge clientImageResize configuration; an admin-provided `enabled` overrides the user's setting
+  // Merge clientImageResize configuration
   if (dynamic.clientImageResize !== undefined) {
     mergedConfig.clientImageResize = {
       ...mergedConfig.clientImageResize,
       ...dynamic.clientImageResize,
-      enforced: dynamic.clientImageResize.enabled !== undefined,
     };
   }
 
@@ -1371,18 +1062,6 @@ export function mergeFileConfig(dynamic: z.infer<typeof fileConfigSchema> | unde
       mergedEndpoint.supportedMimeTypes = convertStringsToRegex(
         dynamicEndpoint.supportedMimeTypes as unknown as string[],
       );
-    }
-
-    if (dynamicEndpoint.defaultLLMDeliveryPath !== undefined) {
-      mergedEndpoint.defaultLLMDeliveryPath = dynamicEndpoint.defaultLLMDeliveryPath;
-    }
-
-    if (dynamicEndpoint.legacyFileUploadUX !== undefined) {
-      mergedEndpoint.legacyFileUploadUX = dynamicEndpoint.legacyFileUploadUX;
-    }
-
-    if (dynamicEndpoint.textFallbackWithoutTools !== undefined) {
-      mergedEndpoint.textFallbackWithoutTools = dynamicEndpoint.textFallbackWithoutTools;
     }
   }
 

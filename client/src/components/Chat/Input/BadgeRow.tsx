@@ -328,7 +328,6 @@ function BadgeRow({
       conversationId={conversationId}
       specName={specName}
       isSubmitting={isSubmitting}
-      observeToolAuthorization={showEphemeralBadges === true}
     >
       <div ref={containerRef} className="relative flex flex-wrap items-center gap-2">
         {showEphemeralBadges === true && <ToolsDropdown />}

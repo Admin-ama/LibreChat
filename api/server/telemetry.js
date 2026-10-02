@@ -5,9 +5,7 @@ function isTruthy(value) {
 }
 
 function isTelemetryEnabled() {
-  const signalEnabled =
-    isTruthy(process.env.OTEL_TRACING_ENABLED) || isTruthy(process.env.OTEL_LOGS_ENABLED);
-  return signalEnabled && !isTruthy(process.env.OTEL_SDK_DISABLED);
+  return isTruthy(process.env.OTEL_TRACING_ENABLED) && !isTruthy(process.env.OTEL_SDK_DISABLED);
 }
 
 if (isTelemetryEnabled()) {

@@ -1,4 +1,3 @@
-import { validateHeaderValue } from 'node:http';
 import { logger } from '@librechat/data-schemas';
 import type { Request, Response } from 'express';
 import type { RumProxyEndpoint, RumProxyResult } from '~/app/metrics';
@@ -122,35 +121,17 @@ function getHeader(req: Request, name: string): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-function getProxyHeaders(
-  req: Request,
-  body: Buffer | string,
-  authorization: string | undefined,
-): Record<string, string> {
-  if (authorization) {
-    try {
-      validateHeaderValue('authorization', authorization);
-    } catch {
-      throw new Error('Invalid RUM proxy authorization header');
-    }
-  }
-
+function getProxyHeaders(req: Request, body: Buffer | string): Record<string, string> {
   const contentType =
     getHeader(req, 'content-type') || (typeof body === 'string' ? 'application/json' : undefined);
   const accept = getHeader(req, 'accept');
   return {
     ...(contentType ? { 'content-type': contentType } : {}),
     ...(accept ? { accept } : {}),
-    ...(authorization ? { authorization } : {}),
   };
 }
 
-export async function proxyRumRequest(
-  req: Request,
-  res: Response,
-  upstreamAuthorization?: string,
-): Promise<void> {
-  const authorization = upstreamAuthorization?.trim();
+export async function proxyRumRequest(req: Request, res: Response): Promise<void> {
   const endpoint = getRumProxyEndpoint(req.path);
   const target = resolveRumProxyTarget(req.path);
   if (!target) {
@@ -171,8 +152,7 @@ export async function proxyRumRequest(
   try {
     const response = await fetch(target, {
       method: 'POST',
-      headers: getProxyHeaders(req, body, authorization),
-      redirect: authorization ? 'error' : 'follow',
+      headers: getProxyHeaders(req, body),
       // TS 5.9 made `Buffer` generic (`Buffer<ArrayBufferLike>`), which no longer
       // structurally matches `BodyInit`; Node's fetch accepts a Buffer body at runtime.
       body: body as BodyInit,

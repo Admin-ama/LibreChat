@@ -140,20 +140,6 @@ const extractUtf8 = (buffer: Buffer): string | null => {
   return truncate(buffer.toString('utf-8'), buffer);
 };
 
-export function extractCodeArtifactRawText(
-  buffer: Buffer,
-  category: CodeArtifactCategory,
-): string | null {
-  if (
-    buffer.length > MAX_TEXT_EXTRACT_BYTES ||
-    category !== 'utf8-text' ||
-    isBinaryBuffer(buffer)
-  ) {
-    return null;
-  }
-  return buffer.toString('utf-8');
-}
-
 /**
  * Map a known office-document extension back to its canonical MIME so we can
  * route through `parseDocument` even when buffer-sniffing yielded a generic
@@ -179,7 +165,7 @@ const documentMimeFromExtension = (name: string): string | null => {
   }
 };
 
-const extractDocumentText = async (
+const extractDocument = async (
   buffer: Buffer,
   name: string,
   mimeType: string,
@@ -203,19 +189,10 @@ const extractDocumentText = async (
     if (!result?.text) {
       return null;
     }
-    return result.text;
+    return truncate(result.text);
   } finally {
     fs.unlink(tempPath).catch(() => {});
   }
-};
-
-const extractDocument = async (
-  buffer: Buffer,
-  name: string,
-  mimeType: string,
-): Promise<string | null> => {
-  const text = await extractDocumentText(buffer, name, mimeType);
-  return text == null ? null : truncate(text);
 };
 
 /**
@@ -283,13 +260,13 @@ const renderOfficeHtml = async (
  * rendering. Returns `null` for binary, oversized, or unsupported files; the
  * caller should fall back to the standard download UI in that case.
  *
- * Office types (docx, xlsx/xls/ods, csv, pptx/potx) are rendered as sanitized
+ * Office types (docx, xlsx/xls/ods, csv, pptx) are rendered as sanitized
  * HTML by the producers in `~/files/documents/html`. The frontend feeds the
  * HTML into the Sandpack `static` template via `index.html`. CSV is special-
  * cased here — its category is `utf8-text` (raw CSV is text), but we want
  * the styled-table preview when the file extension says CSV.
  *
- * - office (docx/xlsx/xls/ods/csv/pptx/potx): sanitized HTML preview
+ * - office (docx/xlsx/xls/ods/csv/pptx): sanitized HTML preview
  * - utf8-text: decodes the buffer (with a binary safety net)
  * - document: dispatches to the existing PDF/ODT parser
  * - other: returns null (binary file, no inline preview)
@@ -341,8 +318,8 @@ export async function extractCodeArtifactText(
        * the markdown viewer with proper escaping). Plain text is safe. */
       return await extractDocument(buffer, name, mimeType);
     }
-    /* category === 'presentation' that didn't go through the office HTML path
-     * (shouldn't happen — presentation extensions use the office HTML path — but
+    /* category === 'pptx' that didn't go through the office HTML path
+     * (shouldn't happen — pptx ext is in OFFICE_HTML_EXTENSIONS — but
      * defended in depth). */
     return null;
   } catch (error) {
@@ -350,71 +327,5 @@ export async function extractCodeArtifactText(
       `[extractCodeArtifactText] Failed to extract "${name}" (${mimeType}): ${(error as Error).message}`,
     );
     return null;
-  }
-}
-
-export interface CodeArtifactInspectionText {
-  readonly text: string | null;
-  readonly complete: boolean;
-}
-
-/**
- * Extracts text for content inspection independently of the persisted preview
- * cache. Plain text and parsed documents are complete only when their full
- * derived text fits inside the inspection ceiling. Parseable office documents
- * use their full semantic extraction; office preview-only formats retain the
- * available HTML for compatibility-mode inspection but stay marked partial
- * because their producers have independent row, slide, and output caps.
- */
-export async function extractCodeArtifactInspectionText(
-  buffer: Buffer,
-  name: string,
-  mimeType: string,
-  category: CodeArtifactCategory,
-): Promise<CodeArtifactInspectionText> {
-  const incomplete = (text: string | null = null): CodeArtifactInspectionText => ({
-    text,
-    complete: false,
-  });
-  const bounded = (text: string | null): CodeArtifactInspectionText => {
-    if (text == null) {
-      return incomplete();
-    }
-    if (Buffer.byteLength(text, 'utf-8') > MAX_TEXT_EXTRACT_BYTES) {
-      return incomplete(truncate(text));
-    }
-    return {
-      text,
-      complete: true,
-    };
-  };
-  if (buffer.length > MAX_TEXT_EXTRACT_BYTES) {
-    return incomplete();
-  }
-  try {
-    if (hasOfficeHtmlPath(name, mimeType)) {
-      if (category === 'utf8-text') {
-        return bounded(extractCodeArtifactRawText(buffer, category));
-      }
-      if (category === 'document') {
-        try {
-          return bounded(await extractDocumentText(buffer, name, mimeType));
-        } catch {
-          // Compatibility mode can still inspect the available preview below.
-        }
-      }
-      return incomplete(await renderOfficeHtml(buffer, name, mimeType));
-    }
-    if (category === 'utf8-text') {
-      return bounded(extractCodeArtifactRawText(buffer, category));
-    }
-    if (category !== 'document') {
-      return incomplete();
-    }
-
-    return bounded(await extractDocumentText(buffer, name, mimeType));
-  } catch {
-    logger.debug('[extractCodeArtifactInspectionText] Artifact inspection failed');
-    return incomplete();
   }
 }

@@ -49,23 +49,22 @@ const DialogTemplate: ForwardRefExoticComponent<
   const Cancel = 'cancel';
 
   const defaultSelect =
-    'bg-surface-inverted text-text-inverted transition-colors hover:bg-surface-inverted-hover disabled:cursor-not-allowed disabled:opacity-50';
+    'bg-gray-800 text-white transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-gray-200 dark:text-gray-800 dark:hover:bg-gray-200';
   return (
     <DialogContent
       showCloseButton={showCloseButton}
       ref={ref}
-      className={cn(
-        'bg-surface-dialog shadow-2xl high-contrast:border high-contrast:border-solid high-contrast:border-border-medium high-contrast:shadow-none',
-        className || '',
-      )}
+      className={cn('shadow-2xl dark:bg-gray-700', className || '')}
       onClick={(e) => e.stopPropagation()}
     >
       <DialogHeader className={cn(headerClassName ?? '')}>
-        <DialogTitle className="text-lg font-medium leading-6 text-text-primary">
+        <DialogTitle className="text-lg font-medium leading-6 text-gray-800 dark:text-gray-200">
           {title}
         </DialogTitle>
         {description && (
-          <DialogDescription className="text-text-secondary">{description}</DialogDescription>
+          <DialogDescription className="text-gray-600 dark:text-gray-300">
+            {description}
+          </DialogDescription>
         )}
       </DialogHeader>
       <div className="px-6">{main ? main : null}</div>
@@ -73,7 +72,7 @@ const DialogTemplate: ForwardRefExoticComponent<
         <div>{leftButtons ? leftButtons : null}</div>
         <div className="flex h-auto gap-3">
           {showCancelButton && (
-            <DialogClose className="border-border-light hover:bg-surface-hover">
+            <DialogClose className="border-gray-100 hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-600">
               {Cancel}
             </DialogClose>
           )}

@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-import { OpenIDIcon, useToastContext } from '@librechat/client';
 import { ErrorTypes, registerPage } from 'librechat-data-provider';
+import { OpenIDIcon, useToastContext } from '@librechat/client';
 import { useOutletContext, useSearchParams, useLocation } from 'react-router-dom';
 import type { TLoginLayoutContext } from '~/common';
-import type { TranslationKeys } from '~/hooks';
 import { getLoginError, persistRedirectToSession } from '~/utils';
 import { ErrorMessage } from '~/components/Auth/ErrorMessage';
 import SocialButton from '~/components/Auth/SocialButton';
@@ -14,13 +13,6 @@ import LoginForm from './LoginForm';
 interface LoginLocationState {
   redirect_to?: string;
 }
-
-/** Error codes the server appends to the login redirect when an OAuth navigation is rejected. */
-const oauthErrorKeys: Record<string, TranslationKeys> = {
-  [ErrorTypes.AUTH_FAILED]: 'com_auth_error_oauth_failed',
-  [ErrorTypes.AUTH_RATE_LIMITED]: 'com_auth_error_login_rl',
-  [ErrorTypes.AUTH_BANNED]: 'com_auth_error_login_ban',
-};
 
 function Login() {
   const localize = useLocalize();
@@ -46,14 +38,9 @@ function Login() {
     }
 
     const oauthError = searchParams?.get('error');
-    /** `hasOwn` keeps an attacker-supplied `?error=toString` off the prototype chain. */
-    const oauthErrorKey =
-      oauthError != null && Object.hasOwn(oauthErrorKeys, oauthError)
-        ? oauthErrorKeys[oauthError]
-        : undefined;
-    if (oauthErrorKey != null) {
+    if (oauthError && oauthError === ErrorTypes.AUTH_FAILED) {
       showToast({
-        message: localize(oauthErrorKey),
+        message: localize('com_auth_error_oauth_failed'),
         status: 'error',
       });
       const newParams = new URLSearchParams(searchParams);
@@ -123,12 +110,12 @@ function Login() {
         />
       )}
       {startupConfig?.registrationEnabled === true && (
-        <p className="my-4 text-center text-sm font-light text-text-secondary">
+        <p className="my-4 text-center text-sm font-light text-gray-700 dark:text-white">
           {' '}
           {localize('com_auth_no_account')}{' '}
           <a
             href={registerPage()}
-            className="inline-flex p-1 text-sm font-medium text-accent-primary underline decoration-transparent transition-all duration-200 hover:text-accent-primary-hover hover:decoration-accent-primary-hover focus:text-accent-primary-hover focus:decoration-accent-primary-hover"
+            className="inline-flex p-1 text-sm font-medium text-green-600 underline decoration-transparent transition-all duration-200 hover:text-green-700 hover:decoration-green-700 focus:text-green-700 focus:decoration-green-700 dark:text-green-500 dark:hover:text-green-400 dark:hover:decoration-green-400 dark:focus:text-green-400 dark:focus:decoration-green-400"
           >
             {localize('com_auth_sign_up')}
           </a>

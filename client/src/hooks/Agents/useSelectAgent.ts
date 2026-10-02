@@ -11,8 +11,8 @@ import type { TConversation, TPreset, Agent } from 'librechat-data-provider';
 import useGetConversation from '~/hooks/Conversations/useGetConversation';
 import useDefaultConvo from '~/hooks/Conversations/useDefaultConvo';
 import { useAgentsMapContext } from '~/Providers/AgentsMapContext';
-import { logger, specDisplayFieldReset } from '~/utils';
 import useNewConvo from '~/hooks/useNewConvo';
+import { logger } from '~/utils';
 
 export default function useSelectAgent() {
   const queryClient = useQueryClient();
@@ -22,43 +22,23 @@ export default function useSelectAgent() {
   const getConversation = useGetConversation(0);
 
   const updateConversation = useCallback(
-    async (
-      agent: Partial<Agent>,
-      template: Partial<TPreset | TConversation>,
-      /** The passes that follow the first one only carry freshly fetched agent details into the
-       * composer the first pass opened, so a paste started meanwhile keeps its draft. */
-      keepComposerState = false,
-    ) => {
+    async (agent: Partial<Agent>, template: Partial<TPreset | TConversation>) => {
       const conversation = await getConversation();
       logger.log('conversation', 'Updating conversation with agent', agent);
       if (isAssistantsEndpoint(conversation?.endpoint)) {
         newConversation({
           template: { ...(template as Partial<TConversation>) },
           preset: template as Partial<TPreset>,
-          keepComposerState,
         });
         return;
       }
-      const switchesAgent = conversation?.agent_id !== agent.id;
-      const resolvedConvo = getDefaultConversation({
-        conversation: {
-          ...(conversation ?? {}),
-          agent_id: agent.id,
-          codeEnvironmentMode: switchesAgent ? undefined : conversation?.codeEnvironmentMode,
-          codeWorkspaces: switchesAgent ? undefined : conversation?.codeWorkspaces,
-          ...specDisplayFieldReset,
-        },
+      const currentConvo = getDefaultConversation({
+        conversation: { ...(conversation ?? {}), agent_id: agent.id },
         preset: template,
       });
-      const currentConvo = {
-        ...resolvedConvo,
-        codeEnvironmentMode: switchesAgent ? undefined : conversation?.codeEnvironmentMode,
-        codeWorkspaces: switchesAgent ? undefined : conversation?.codeWorkspaces,
-      };
       newConversation({
         template: currentConvo,
         preset: template as Partial<TPreset>,
-        keepComposerState,
       });
     },
     [getConversation, getDefaultConversation, newConversation],
@@ -75,9 +55,6 @@ export default function useSelectAgent() {
         endpoint: EModelEndpoint.agents,
         agent_id: agent.id,
         conversationId: Constants.NEW_CONVO as string,
-        codeEnvironmentMode: undefined,
-        codeWorkspaces: undefined,
-        ...specDisplayFieldReset,
       };
 
       await updateConversation({ id: agent.id }, template);
@@ -89,7 +66,7 @@ export default function useSelectAgent() {
           }),
         );
         if (fullAgent) {
-          await updateConversation(fullAgent, { ...template, agent_id: fullAgent.id }, true);
+          await updateConversation(fullAgent, { ...template, agent_id: fullAgent.id });
         }
       } catch (error) {
         if ((error as { silent: boolean } | undefined)?.silent) {
@@ -97,7 +74,7 @@ export default function useSelectAgent() {
           return;
         }
         console.error('Error fetching full agent data:', error);
-        await updateConversation({}, { ...template, agent_id: undefined }, true);
+        await updateConversation({}, { ...template, agent_id: undefined });
       }
     },
     [agentsMap, updateConversation, queryClient],

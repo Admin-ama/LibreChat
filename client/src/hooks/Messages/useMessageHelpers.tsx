@@ -1,21 +1,13 @@
 import { useCallback, useMemo } from 'react';
 import throttle from 'lodash/throttle';
-import {
-  isAssistantsEndpoint,
-  isAgentsEndpoint,
-  isConfiguredSender,
-} from 'librechat-data-provider';
-import type { SearchResultData } from 'librechat-data-provider';
+import { isAssistantsEndpoint, isAgentsEndpoint } from 'librechat-data-provider';
 import type { TMessageProps } from '~/common';
 import { useMessagesViewContext, useAssistantsMapContext, useAgentsMapContext } from '~/Providers';
-import { useCopyMessageToClipboard, hasCopyableText } from './useCopyToClipboard';
+import useCopyToClipboard from './useCopyToClipboard';
 import { useGetAddedConvo } from '~/hooks/Chat';
 import { logger } from '~/utils';
 
-export default function useMessageHelpers(
-  props: TMessageProps,
-  searchResults?: { [key: string]: SearchResultData },
-) {
+export default function useMessageHelpers(props: TMessageProps) {
   const { message, currentEditId, setCurrentEditId } = props;
 
   const {
@@ -89,18 +81,7 @@ export default function useMessageHelpers(
     regenerate(message, { addedConvo: getAddedConvo() });
   };
 
-  const copyToClipboard = useCopyMessageToClipboard({
-    text,
-    content,
-    searchResults,
-    isCreatedByUser,
-    error: message?.error,
-  });
-
-  const getCanCopy = useCallback(
-    () => hasCopyableText({ text, content, searchResults }),
-    [text, content, searchResults],
-  );
+  const copyToClipboard = useCopyToClipboard({ text, content });
 
   return {
     ask,
@@ -109,18 +90,8 @@ export default function useMessageHelpers(
     index,
     isLast,
     assistant,
-    getCanCopy,
     enterEdit,
     conversation,
-    /** Whether the header's label is a configured sender, so it can withhold the model
-     *  it stands in for. */
-    hasConfiguredSender: isConfiguredSender({
-      sender: message?.sender,
-      endpoint: message?.endpoint ?? conversation?.endpoint,
-      endpointType: conversation?.endpointType,
-      model: message?.model ?? conversation?.model,
-      isCreatedByUser: message?.isCreatedByUser,
-    }),
     isSubmitting,
     handleScroll,
     handleContinue,

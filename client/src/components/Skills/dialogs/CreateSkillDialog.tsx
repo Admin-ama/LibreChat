@@ -1,8 +1,6 @@
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import {
-  Input,
-  Label,
   Button,
   OGDialog,
   OGDialogContent,
@@ -12,7 +10,6 @@ import {
 import {
   SKILL_NAME_PATTERN,
   SKILL_NAME_MAX_LENGTH,
-  SKILL_BODY_MAX_LENGTH,
   SKILL_DESCRIPTION_MAX_LENGTH,
 } from 'librechat-data-provider';
 import type { TSkill } from 'librechat-data-provider';
@@ -39,11 +36,6 @@ interface FormValues {
   name: string;
   description: string;
   body: string;
-}
-
-interface SkillValidationIssue {
-  field: string;
-  code: string;
 }
 
 /**
@@ -84,48 +76,9 @@ export default function CreateSkillDialog({
       navigate(`/skills/${skill._id}`);
     },
     onError: (error: unknown) => {
-      const response = (
-        error as {
-          response?: {
-            status?: number;
-            data?: { error?: string; message?: string; issues?: SkillValidationIssue[] };
-          };
-        }
-      )?.response;
-      const getIssueMessage = ({ field, code }: SkillValidationIssue) => {
-        if (field === 'name' && code === 'REQUIRED') {
-          return localize('com_ui_skill_name_required');
-        }
-        if (field === 'name' && code === 'TOO_LONG') {
-          return localize('com_ui_skill_name_too_long', { 0: SKILL_NAME_MAX_LENGTH });
-        }
-        if (field === 'name' && code === 'INVALID_FORMAT') {
-          return localize('com_ui_skill_name_invalid');
-        }
-        if (field === 'name' && (code === 'RESERVED_PREFIX' || code === 'RESERVED_WORD')) {
-          return localize('com_ui_skill_name_reserved');
-        }
-        if (field === 'description' && code === 'REQUIRED') {
-          return localize('com_ui_skill_description_required');
-        }
-        if (field === 'description' && code === 'TOO_LONG') {
-          return localize('com_ui_skill_description_too_long', {
-            0: SKILL_DESCRIPTION_MAX_LENGTH,
-          });
-        }
-        if (field === 'body' && code === 'TOO_LONG') {
-          return localize('com_ui_skill_instructions_too_long', { 0: SKILL_BODY_MAX_LENGTH });
-        }
-        return localize('com_ui_skill_validation_error');
-      };
-      const data = response?.data;
-      let message = data?.message || localize('com_ui_skill_create_error');
-      if (response?.status === 409) {
-        message = localize('com_ui_skill_name_exists');
-      }
-      if (data?.issues?.length) {
-        message = data.issues.map(getIssueMessage).join('; ');
-      }
+      const message =
+        (error as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        localize('com_ui_skill_create_error');
       showToast({ status: 'error', message });
     },
   });
@@ -171,10 +124,10 @@ export default function CreateSkillDialog({
 
           {/* Skill name */}
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="create-skill-name" className="text-sm font-medium text-text-secondary">
+            <label htmlFor="create-skill-name" className="text-sm font-medium text-text-secondary">
               {localize('com_ui_name')}
-            </Label>
-            <Input
+            </label>
+            <input
               id="create-skill-name"
               placeholder={localize('com_ui_skill_name_placeholder')}
               aria-invalid={errors.name ? 'true' : 'false'}
@@ -194,7 +147,7 @@ export default function CreateSkillDialog({
                 },
               })}
             />
-            {errors.name && <p className="text-xs text-text-destructive">{errors.name.message}</p>}
+            {errors.name && <p className="text-xs text-red-500">{errors.name.message}</p>}
           </div>
 
           {/* Description */}
@@ -211,8 +164,6 @@ export default function CreateSkillDialog({
               maxRows={4}
               placeholder={localize('com_ui_skill_description_placeholder')}
               aria-label={localize('com_ui_description')}
-              aria-invalid={errors.description ? 'true' : 'false'}
-              aria-describedby={errors.description ? 'create-skill-description-error' : undefined}
               className="w-full resize-none rounded-xl border border-border-medium bg-transparent px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary"
               {...register('description', {
                 required: localize('com_ui_skill_description_required'),
@@ -224,15 +175,6 @@ export default function CreateSkillDialog({
                 },
               })}
             />
-            {errors.description && (
-              <p
-                id="create-skill-description-error"
-                className="mt-1 text-sm text-text-destructive"
-                role="alert"
-              >
-                {errors.description.message}
-              </p>
-            )}
           </div>
 
           {/* Instructions (body) */}
@@ -258,12 +200,10 @@ export default function CreateSkillDialog({
             </Button>
             <Button
               type="submit"
-              variant="submit"
               disabled={submitDisabled}
-              aria-busy={createSkill.isLoading}
               className={cn(submitDisabled && 'opacity-50')}
             >
-              {localize(createSkill.isLoading ? 'com_ui_creating' : 'com_ui_create')}
+              {localize('com_ui_create')}
             </Button>
           </div>
         </form>

@@ -23,8 +23,6 @@ const tasks: ShutdownTask[] = [];
 let nextRegistrationOrder = 0;
 let isShuttingDown = false;
 let httpServer: Server | null = null;
-let forceExitTimer: NodeJS.Timeout | null = null;
-let shutdownStartedAt: number | null = null;
 
 /**
  * Register a cleanup task for graceful shutdown. Post-drain is the default phase.
@@ -42,53 +40,6 @@ export function registerShutdownTask(
   const phase: ShutdownPhase = options.phase === 'pre-drain' ? 'pre-drain' : 'post-drain';
   const priority = Number.isFinite(options.priority) ? (options.priority ?? 0) : 0;
   tasks.push({ name, fn, phase, priority, registrationOrder: nextRegistrationOrder++ });
-}
-
-/** Whether graceful shutdown has started, for admission paths that must fail closed. */
-/**
- * Milliseconds left before graceful shutdown force-exits, or `null` when not shutting down.
- * Lets a shutdown task spend the budget it actually has instead of guessing at a fixed cutoff.
- */
-/**
- * Milliseconds since graceful shutdown began, or `null` when not shutting down. For a task whose
- * real deadline is imposed from outside this process — a cluster primary that force-exits the
- * whole group on its own timer — this is what lets it measure against that deadline instead.
- */
-export function getShutdownElapsedMs(): number | null {
-  if (shutdownStartedAt == null) {
-    return null;
-  }
-  return Math.max(0, Date.now() - shutdownStartedAt);
-}
-
-export function getRemainingShutdownMs(): number | null {
-  if (shutdownStartedAt == null) {
-    return null;
-  }
-  return Math.max(0, SHUTDOWN_TIMEOUT_MS - (Date.now() - shutdownStartedAt));
-}
-
-export function getClusterShutdownBudgetMs({
-  deadlineAt,
-  forceExitMs,
-  remainingMs = getRemainingShutdownMs(),
-  elapsedMs = getShutdownElapsedMs(),
-  now = Date.now(),
-}: {
-  deadlineAt: number | null;
-  forceExitMs: number;
-  remainingMs?: number | null;
-  elapsedMs?: number | null;
-  now?: number;
-}): number | null {
-  if (remainingMs == null || elapsedMs == null) {
-    return null;
-  }
-  return Math.min(remainingMs, deadlineAt == null ? forceExitMs - elapsedMs : deadlineAt - now);
-}
-
-export function isShutdownInProgress(): boolean {
-  return isShuttingDown;
 }
 
 /**
@@ -116,16 +67,10 @@ export function __resetShutdownStateForTests(): void {
   tasks.length = 0;
   nextRegistrationOrder = 0;
   isShuttingDown = false;
-  shutdownStartedAt = null;
   httpServer = null;
-  /** A drain that never settles leaves this armed. It is `unref`'d, so it does
-   *  not hold the process open — but it does fire if anything else keeps the
-   *  process alive past the timeout, exiting a suite that had long since moved
-   *  on with code 1 and no attributable failure. */
-  clearForceExitTimer();
 }
 
-async function runShutdownTasks(phase: ShutdownPhase): Promise<boolean> {
+async function runShutdownTasks(phase: ShutdownPhase): Promise<void> {
   const orderedTasks = tasks
     .filter((task) => task.phase === phase)
     .sort(
@@ -133,23 +78,13 @@ async function runShutdownTasks(phase: ShutdownPhase): Promise<boolean> {
         right.priority - left.priority || left.registrationOrder - right.registrationOrder,
     );
 
-  let failed = false;
   for (const task of orderedTasks) {
     try {
       logger.info(`Running ${phase} shutdown task: ${task.name}`);
       await task.fn();
     } catch (err) {
-      failed = true;
       logger.error(`Shutdown task "${task.name}" failed:`, err);
     }
-  }
-  return failed;
-}
-
-function clearForceExitTimer(): void {
-  if (forceExitTimer) {
-    clearTimeout(forceExitTimer);
-    forceExitTimer = null;
   }
 }
 
@@ -158,36 +93,26 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
     return;
   }
   isShuttingDown = true;
-  shutdownStartedAt = Date.now();
   logger.info(`Received ${signal}, draining HTTP server...`);
 
-  /** Owned locally so a late `finally` from a superseded drain cannot clear the
-   *  safety net belonging to a shutdown that started after it. */
   const forceExit = setTimeout(() => {
     logger.warn(`Graceful shutdown exceeded ${SHUTDOWN_TIMEOUT_MS}ms, forcing exit`);
     process.exit(1);
   }, SHUTDOWN_TIMEOUT_MS);
   forceExit.unref();
-  forceExitTimer = forceExit;
 
   let exitCode = 0;
 
-  try {
-    const serverClosePromise = closeHttpServer().catch((err) => {
-      logger.error('Error closing HTTP server during graceful shutdown:', err);
-      exitCode = 1;
-    });
+  const serverClosePromise = closeHttpServer().catch((err) => {
+    logger.error('Error closing HTTP server during graceful shutdown:', err);
+    exitCode = 1;
+  });
 
-    if (await runShutdownTasks('pre-drain')) exitCode = 1;
-    await serverClosePromise;
-    if (await runShutdownTasks('post-drain')) exitCode = 1;
-  } finally {
-    clearTimeout(forceExit);
-    if (forceExitTimer === forceExit) {
-      forceExitTimer = null;
-    }
-  }
+  await runShutdownTasks('pre-drain');
+  await serverClosePromise;
+  await runShutdownTasks('post-drain');
 
+  clearTimeout(forceExit);
   logger.info('Graceful shutdown complete, exiting');
   process.exit(exitCode);
 }

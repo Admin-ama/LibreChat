@@ -77,7 +77,6 @@ const AgentCategorySelector: React.FC<{ className?: string }> = ({ className }) 
 
         return (
           <ControlCombobox
-            selectId="category-selector"
             selectedValue={field.value}
             displayValue={displayValue}
             searchPlaceholder={searchPlaceholder}

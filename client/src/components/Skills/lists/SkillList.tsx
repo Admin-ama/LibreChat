@@ -1,30 +1,35 @@
 import { useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
-import type { TSkillSummary } from 'librechat-data-provider';
-import SkillListItem from './SkillListItem';
-import { Collapse } from '~/components/ui';
+import { Skeleton } from '@librechat/client';
+import type { TSkill } from 'librechat-data-provider';
 import { useLocalize } from '~/hooks';
+import SkillListItem from './SkillListItem';
 import { cn } from '~/utils';
 
 interface SkillListProps {
-  skills: TSkillSummary[];
+  skills: TSkill[];
+  isLoading: boolean;
   activeSkillId?: string;
-  sectionOpen: boolean;
-  onSectionOpenChange: (open: boolean) => void;
 }
 
 /** Collapsible skill list. Active/inactive toggling lives in the detail view. */
-export default function SkillList({
-  skills,
-  activeSkillId,
-  sectionOpen,
-  onSectionOpenChange,
-}: SkillListProps) {
+export default function SkillList({ skills, isLoading, activeSkillId }: SkillListProps) {
   const localize = useLocalize();
   const [searchParams] = useSearchParams();
   const activeFile = searchParams.get('file');
+  const [sectionOpen, setSectionOpen] = useState(true);
   const [expandedSkillId, setExpandedSkillId] = useState<string | null>(activeSkillId ?? null);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-2 px-2 pt-2">
+        <Skeleton className="h-8 w-full rounded-lg" />
+        <Skeleton className="h-8 w-full rounded-lg" />
+        <Skeleton className="h-8 w-full rounded-lg" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-px">
@@ -32,7 +37,7 @@ export default function SkillList({
       <div className="flex items-center justify-between px-2 pb-2">
         <button
           type="button"
-          onClick={() => onSectionOpenChange(!sectionOpen)}
+          onClick={() => setSectionOpen((prev) => !prev)}
           className="flex cursor-pointer items-center gap-1.5"
           aria-expanded={sectionOpen}
         >
@@ -48,7 +53,7 @@ export default function SkillList({
       </div>
 
       {/* Skill items */}
-      <Collapse open={sectionOpen}>
+      {sectionOpen && (
         <div className="flex flex-col gap-px">
           {skills.length === 0 ? (
             <p className="px-3 py-4 text-center text-xs text-text-secondary">
@@ -67,7 +72,7 @@ export default function SkillList({
             ))
           )}
         </div>
-      </Collapse>
+      )}
     </div>
   );
 }

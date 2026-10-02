@@ -61,7 +61,7 @@ const SharePrompt = React.memo(
             <Button
               variant="outline"
               size="icon"
-              className="border-border-medium"
+              className="size-9 border-border-medium"
               aria-label={localize('com_ui_share')}
               disabled={disabled}
             >

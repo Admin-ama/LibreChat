@@ -6,7 +6,6 @@ const {
   requireCapability,
 } = require('~/server/middleware/roles/capabilities');
 const { invalidateConfigCaches } = require('~/server/services/Config');
-const configMiddleware = require('~/server/middleware/config/app');
 const { requireJwtAuth } = require('~/server/middleware');
 const db = require('~/models');
 
@@ -39,17 +38,12 @@ const handlers = createAdminLangfuseHandlers({
   findConfigByPrincipal: db.findConfigByPrincipal,
   patchConfigFields: db.patchConfigFields,
   toggleConfigActive: db.toggleConfigActive,
-  getMessages: db.getMessages,
   invalidateConfigCaches,
 });
 
-// `configMiddleware` runs last so unauthorized callers are rejected before the
-// config resolves; credential verification reads the deployment's Langfuse
-// headers off `req.config`, so without it proxied hosts reject every request.
-router.use(requireJwtAuth, requireAdminAccess, requireLangfuseManage, configMiddleware);
+router.use(requireJwtAuth, requireAdminAccess, requireLangfuseManage);
 
 router.get('/connection', handlers.getConnection);
-router.get('/connection/session/:conversationId', handlers.getSessionLink);
 router.put('/connection', handlers.updateConnection);
 router.post('/connection/test', handlers.testConnection);
 

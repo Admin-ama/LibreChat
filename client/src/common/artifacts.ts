@@ -4,8 +4,6 @@ export interface CodeBlock {
   content: string;
 }
 
-export const MERMAID_ARTIFACT_TYPE = 'application/vnd.mermaid' as const;
-
 /**
  * Original-file download metadata for artifacts backed by a real
  * code-interpreter file (e.g. an office document whose panel preview is
@@ -14,9 +12,6 @@ export const MERMAID_ARTIFACT_TYPE = 'application/vnd.mermaid' as const;
  * the rendered preview `content`.
  */
 export interface ArtifactDownload {
-  /** Original attachment name; null means the attachment supplied no filename. */
-  filename?: string | null;
-  mimeType?: string;
   filepath?: string;
   file_id?: string;
   source?: string;

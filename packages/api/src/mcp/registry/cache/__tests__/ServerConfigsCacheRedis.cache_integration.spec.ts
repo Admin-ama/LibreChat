@@ -3,8 +3,6 @@ import type { RedisClientsModule } from '~/cache/__tests__/redisClients.helper';
 import { closeRedisClients } from '~/cache/__tests__/redisClients.helper';
 import { ParsedServerConfig } from '~/mcp/types';
 
-type StdioServerConfig = Extract<ParsedServerConfig, { type: 'stdio' }>;
-
 describe('ServerConfigsCacheRedis Integration Tests', () => {
   let ServerConfigsCacheRedis: typeof import('../ServerConfigsCacheRedis').ServerConfigsCacheRedis;
   let keyvRedisClient: Awaited<typeof import('~/cache/redisClients')>['keyvRedisClient'];
@@ -12,19 +10,19 @@ describe('ServerConfigsCacheRedis Integration Tests', () => {
 
   let cache: InstanceType<typeof import('../ServerConfigsCacheRedis').ServerConfigsCacheRedis>;
 
-  const mockConfig1: StdioServerConfig = {
+  const mockConfig1 = {
     type: 'stdio',
     command: 'node',
     args: ['server1.js'],
     env: { TEST: 'value1' },
-  };
+  } as ParsedServerConfig;
 
-  const mockConfig2: StdioServerConfig = {
+  const mockConfig2 = {
     type: 'stdio',
     command: 'python',
     args: ['server2.py'],
     env: { TEST: 'value2' },
-  };
+  } as ParsedServerConfig;
 
   const mockConfig3 = {
     type: 'sse',
@@ -69,8 +67,8 @@ describe('ServerConfigsCacheRedis Integration Tests', () => {
       const keysToDelete: string[] = [];
 
       // Collect all keys first
-      for await (const page of keyvRedisClient.scanIterator({ MATCH: pattern })) {
-        keysToDelete.push(...page);
+      for await (const key of keyvRedisClient.scanIterator({ MATCH: pattern })) {
+        keysToDelete.push(key);
       }
 
       // Delete in parallel for cluster mode efficiency
@@ -131,21 +129,6 @@ describe('ServerConfigsCacheRedis Integration Tests', () => {
 
       expect(userResult).toMatchObject(mockConfig1);
       expect(globalResult).toMatchObject(mockConfig2);
-    });
-  });
-
-  describe('patch operation', () => {
-    it('preserves empty arrays in a patched per-key entry', async () => {
-      const emptyArgsConfig: StdioServerConfig = { ...mockConfig1, args: [] };
-      const { config } = await cache.add('empty-arrays', emptyArgsConfig);
-
-      await expect(
-        cache.patch('empty-arrays', { resolvedInstructions: 'patched' }, config.updatedAt),
-      ).resolves.toBe(true);
-
-      const result = await cache.get('empty-arrays');
-      expect(result).toMatchObject({ args: [] });
-      expect(result?.resolvedInstructions).toBe('patched');
     });
   });
 

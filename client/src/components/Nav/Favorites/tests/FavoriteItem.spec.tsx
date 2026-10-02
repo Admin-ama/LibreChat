@@ -18,9 +18,7 @@ jest.mock('~/hooks', () => ({
 
 jest.mock('~/components/Chat/Menus/Endpoints/components/SpecIcon', () => ({
   __esModule: true,
-  default: ({ agentAvatarURL }: { agentAvatarURL?: string }) => (
-    <span data-testid="spec-icon" data-agent-avatar-url={agentAvatarURL ?? ''} />
-  ),
+  default: () => <span data-testid="spec-icon" />,
 }));
 
 jest.mock('~/components/Endpoints/MinimalIcon', () => ({
@@ -31,6 +29,17 @@ jest.mock('~/components/Endpoints/MinimalIcon', () => ({
 jest.mock('~/utils', () => ({
   ...jest.requireActual('~/utils'),
   renderAgentAvatar: () => <span data-testid="agent-avatar" />,
+}));
+
+jest.mock('@librechat/client', () => ({
+  ...jest.requireActual('@librechat/client'),
+  DropdownPopup: () => <div data-testid="dropdown-popup" />,
+}));
+
+jest.mock('@ariakit/react/menu', () => ({
+  MenuButton: ({ children }: { children?: React.ReactNode }) => (
+    <button type="button">{children}</button>
+  ),
 }));
 
 const baseAgent: Agent = {
@@ -110,17 +119,6 @@ describe('FavoriteItem', () => {
       expect(screen.getByTestId('spec-icon')).toBeInTheDocument();
     });
 
-    /** The pinned row must show the same agent avatar as the selector row. */
-    it('threads the agent avatar through to SpecIcon', () => {
-      render(
-        <FavoriteItem type="spec" item={baseSpec} agentAvatarURL="/images/agent-avatar.png" />,
-      );
-      expect(screen.getByTestId('spec-icon')).toHaveAttribute(
-        'data-agent-avatar-url',
-        '/images/agent-avatar.png',
-      );
-    });
-
     it('has aria-label formatted as "<label> (com_ui_model_spec)"', () => {
       render(<FavoriteItem type="spec" item={baseSpec} />);
       expect(
@@ -147,30 +145,6 @@ describe('FavoriteItem', () => {
       render(<FavoriteItem type="spec" item={baseSpec} onSelectSpec={onSelectSpec} />);
       fireEvent.keyDown(screen.getByTestId('favorite-item'), { key: ' ' });
       expect(onSelectSpec).toHaveBeenCalledWith(baseSpec);
-    });
-  });
-
-  describe('unpin button', () => {
-    it('unpins directly without opening a menu', () => {
-      render(<FavoriteItem type="agent" item={baseAgent} />);
-      const unpin = screen.getByTestId('favorite-unpin-button');
-      expect(unpin).toHaveAttribute('aria-label', 'com_ui_unpin');
-      fireEvent.click(unpin);
-      expect(mockRemoveFavoriteAgent).toHaveBeenCalledWith('agent-123');
-    });
-
-    it('unpins a model without selecting the row', () => {
-      const onSelectEndpoint = jest.fn();
-      render(<FavoriteItem type="model" item={baseModel} onSelectEndpoint={onSelectEndpoint} />);
-      fireEvent.click(screen.getByTestId('favorite-unpin-button'));
-      expect(mockRemoveFavoriteModel).toHaveBeenCalledWith('gpt-5', 'openai');
-      expect(onSelectEndpoint).not.toHaveBeenCalled();
-    });
-
-    it('unpins a spec', () => {
-      render(<FavoriteItem type="spec" item={baseSpec} />);
-      fireEvent.click(screen.getByTestId('favorite-unpin-button'));
-      expect(mockRemoveFavoriteSpec).toHaveBeenCalledWith('my-spec');
     });
   });
 });

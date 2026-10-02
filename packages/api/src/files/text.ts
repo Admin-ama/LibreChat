@@ -5,7 +5,6 @@ import { logger } from '@librechat/data-schemas';
 import { FileSources } from 'librechat-data-provider';
 import type { ServerRequest } from '~/types';
 import { logAxiosError, readFileAsString } from '~/utils';
-import { getFileExtractionLogDetails } from './extract';
 import { generateShortLivedToken } from '~/crypto/jwt';
 
 const MARKDOWN_MIME_TYPES = new Set([
@@ -56,25 +55,10 @@ export async function parseText({
   file_id: string;
   allowNativeFallback?: boolean;
 }): Promise<{ text: string; bytes: number; source: string }> {
-  const getExtractionLogDetails = (error: unknown) =>
-    getFileExtractionLogDetails({
-      filters: req.config?.filters,
-      filename: file.originalname,
-      fileId: file_id,
-      error,
-    });
-  const { contentProtected, fileLabel } = getExtractionLogDetails(undefined);
-  const logRagError = (message: string, error: unknown): void => {
-    if (!contentProtected) {
-      logAxiosError({ message, error });
-      return;
-    }
-    logger.error(message, getExtractionLogDetails(error).errorMetadata);
-  };
   const nativeFallback = (): Promise<{ text: string; bytes: number; source: string }> => {
     if (!allowNativeFallback) {
       throw new Error(
-        `[parseText] RAG text extraction unavailable for ${fileLabel} and native fallback is disabled`,
+        `[parseText] RAG text extraction unavailable for "${file.originalname}" and native fallback is disabled`,
       );
     }
     return parseTextNative(file);
@@ -86,9 +70,8 @@ export async function parseText({
   }
 
   if (isMarkdownFile(file)) {
-    const markdownFileLabel = contentProtected ? fileLabel : file.originalname;
     logger.debug(
-      `[parseText] Markdown file detected (${markdownFileLabel}, ${file.mimetype}), using native parsing to preserve raw formatting`,
+      `[parseText] Markdown file detected (${file.originalname}, ${file.mimetype}), using native parsing to preserve raw formatting`,
     );
     return parseTextNative(file);
   }
@@ -108,7 +91,10 @@ export async function parseText({
       return nativeFallback();
     }
   } catch (healthError) {
-    logRagError('[parseText] RAG API health check failed:', healthError);
+    logAxiosError({
+      message: '[parseText] RAG API health check failed:',
+      error: healthError,
+    });
     return nativeFallback();
   }
 
@@ -142,7 +128,10 @@ export async function parseText({
       source: FileSources.text,
     };
   } catch (error) {
-    logRagError('[parseText] RAG API text parsing failed', error);
+    logAxiosError({
+      message: '[parseText] RAG API text parsing failed',
+      error,
+    });
     return nativeFallback();
   }
 }

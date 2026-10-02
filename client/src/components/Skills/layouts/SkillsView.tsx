@@ -96,12 +96,7 @@ function DetailView({ skillId }: { skillId: string }) {
     return (
       <div className="flex h-full w-full flex-col bg-presentation">
         <MobileSidebarToggle />
-        <SkillFileViewer
-          key={`${skillId}:${activeFile}`}
-          skillId={skillId}
-          relativePath={activeFile}
-          skill={skillQuery.data}
-        />
+        <SkillFileViewer skillId={skillId} relativePath={activeFile} />
       </div>
     );
   }

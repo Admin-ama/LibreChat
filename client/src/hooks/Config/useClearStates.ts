@@ -1,14 +1,10 @@
-import { useStore } from 'jotai';
 import { useRecoilCallback } from 'recoil';
-import { siblingIdxFamily, siblingKey } from '~/components/Chat/Messages/Thread/state';
-import { showSkillsPopoverFamily } from '~/components/Chat/Input/skillsState';
 import { clearLocalStorage } from '~/utils/localStorage';
 import store from '~/store';
 
 export default function useClearStates() {
   const clearConversations = store.useClearConvoState();
   const clearSubmissions = store.useClearSubmissionState();
-  const jotaiStore = useStore();
 
   const clearStates = useRecoilCallback(
     ({ reset, snapshot }) =>
@@ -34,7 +30,7 @@ export default function useClearStates() {
           reset(store.showMentionPopoverFamily(key));
           reset(store.showPlusPopoverFamily(key));
           reset(store.showPromptsPopoverFamily(key));
-          jotaiStore.set(showSkillsPopoverFamily(key), false);
+          reset(store.showSkillsPopoverFamily(key));
           reset(store.pendingManualSkillsByConvoId(key.toString()));
           reset(store.pendingQuotesByConvoId(key.toString()));
           /**
@@ -54,12 +50,12 @@ export default function useClearStates() {
           reset(store.globalAudioPlayingFamily(key));
           reset(store.activeRunFamily(key));
           reset(store.audioRunFamily(key));
-          jotaiStore.set(siblingIdxFamily(siblingKey(key.toString())), 0);
+          reset(store.messagesSiblingIdxFamily(key.toString()));
         }
 
         clearLocalStorage(skipFirst);
       },
-    [clearConversations, clearSubmissions, jotaiStore],
+    [],
   );
 
   return clearStates;

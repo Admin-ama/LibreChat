@@ -1,12 +1,12 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
-import { Copy, Check } from 'lucide';
 import rehypeKatex from 'rehype-katex';
 import supersub from 'remark-supersub';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
-import { Button, MorphIcon, TooltipAnchor, useToastContext } from '@librechat/client';
+import { Copy, Check } from 'lucide-react';
+import { Button, TooltipAnchor, useToastContext } from '@librechat/client';
 import { codeNoExecution } from '~/components/Chat/Messages/Content/MarkdownComponents';
 import { PromptVariableGfm } from '../editor/Markdown';
 import { useLocalize } from '~/hooks';
@@ -67,7 +67,11 @@ const PromptTextCard = ({ mainText }: PromptTextCardProps) => {
               }
               aria-live="polite"
             >
-              <MorphIcon icon={isCopied ? Check : Copy} className="size-4 text-text-secondary" />
+              {isCopied ? (
+                <Check className="size-4 text-text-secondary" aria-hidden="true" />
+              ) : (
+                <Copy className="size-4 text-text-secondary" aria-hidden="true" />
+              )}
             </Button>
           }
         />

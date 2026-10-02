@@ -246,7 +246,6 @@ export interface ComposerKeyContext {
   isSubmitting: boolean;
   allowSubmitWhileGenerating: boolean;
   hasDuringRunModifier: boolean;
-  shortcutsEnabled: boolean;
   enterToSend: boolean;
   submitOverride: ShortcutBinding | null | undefined;
   /** `bindingHash`es of chords bound to global shortcuts that run while typing. */
@@ -277,11 +276,7 @@ export function resolveComposerKeyDown(
   if (binding != null && ctx.yieldedChords.has(bindingHash(binding))) {
     return 'none';
   }
-  const duringRun =
-    ctx.shortcutsEnabled &&
-    ctx.isSubmitting &&
-    ctx.allowSubmitWhileGenerating &&
-    ctx.hasDuringRunModifier;
+  const duringRun = ctx.isSubmitting && ctx.allowSubmitWhileGenerating && ctx.hasDuringRunModifier;
   if (duringRun && !ctx.isComposing) {
     if (e.altKey && !bindingsMatch(binding, ctx.submitOverride)) {
       return 'interrupt';

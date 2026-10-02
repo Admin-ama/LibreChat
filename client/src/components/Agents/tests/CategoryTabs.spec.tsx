@@ -1,9 +1,9 @@
 import React from 'react';
-import userEvent from '@testing-library/user-event';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
-import type t from 'librechat-data-provider';
 import CategoryTabs from '../CategoryTabs';
+import type t from 'librechat-data-provider';
 
 // Mock useLocalize hook
 jest.mock('~/hooks/useLocalize', () => () => (key: string) => {

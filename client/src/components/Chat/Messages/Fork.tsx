@@ -1,14 +1,14 @@
-import React, { memo, useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { useRecoilState } from 'recoil';
 import * as Ariakit from '@ariakit/react';
 import { VisuallyHidden } from '@ariakit/react';
 import { GitFork, InfoIcon } from 'lucide-react';
+import { useToastContext } from '@librechat/client';
 import { ForkOptions } from 'librechat-data-provider';
 import { GitCommit, GitBranchPlus, ListTree } from 'lucide-react';
-import { Button, Label, Checkbox, useToastContext } from '@librechat/client';
 import { TranslationKeys, useLocalize, useNavigateToConvo } from '~/hooks';
 import { useForkConvoMutation } from '~/data-provider';
-import { hoverButtonClasses } from './styles';
+import { cn } from '~/utils';
 import store from '~/store';
 
 interface PopoverButtonProps {
@@ -98,7 +98,7 @@ const PopoverButton: React.FC<PopoverButtonProps> = ({
             </Ariakit.Button>
           }
         />
-        <Ariakit.HovercardDisclosure className="rounded-full text-text-secondary focus:outline-none focus:ring-2 focus:ring-text-primary">
+        <Ariakit.HovercardDisclosure className="rounded-full text-text-secondary focus:outline-none focus:ring-2 focus:ring-ring">
           <VisuallyHidden>
             {localize('com_ui_fork_more_details_about', { 0: label })}
           </VisuallyHidden>
@@ -153,32 +153,32 @@ const CheckboxOption: React.FC<CheckboxOptionProps> = ({
         <Ariakit.HovercardAnchor
           render={
             <div className="flex items-center">
-              <Checkbox
+              <Ariakit.Checkbox
                 id={id}
                 checked={checked}
-                onCheckedChange={(value) => {
-                  const isChecked = value === true;
-                  if (isChecked && showToastOnCheck) {
+                onChange={(e) => {
+                  const value = e.target.checked;
+                  if (value && showToastOnCheck) {
                     showToast({
                       message: localize('com_ui_fork_remember_checked'),
                       status: 'info',
                     });
                   }
-                  onToggle(isChecked);
+                  onToggle(value);
                 }}
-                className="transition duration-300 ease-in-out"
+                className="h-4 w-4 rounded-sm border border-primary ring-offset-background transition duration-300 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground"
                 aria-label={localize(labelKey)}
               />
-              <Label
+              <label
                 htmlFor={id}
-                className="ml-2 w-auto cursor-pointer select-none break-normal text-sm text-text-secondary hover:text-text-primary"
+                className="ml-2 cursor-pointer select-none text-sm text-text-secondary hover:text-text-primary"
               >
                 {localize(labelKey)}
-              </Label>
+              </label>
             </div>
           }
         />
-        <Ariakit.HovercardDisclosure className="ml-1 rounded-full text-text-secondary focus:outline-none focus:ring-2 focus:ring-text-primary">
+        <Ariakit.HovercardDisclosure className="ml-1 rounded-full text-text-secondary focus:outline-none focus:ring-2 focus:ring-ring">
           <VisuallyHidden>{localize(infoKey)}</VisuallyHidden>
           {chevronDown}
         </Ariakit.HovercardDisclosure>
@@ -199,24 +199,24 @@ const CheckboxOption: React.FC<CheckboxOptionProps> = ({
   );
 };
 
-function Fork({
+export default function Fork({
   messageId,
   conversationId: _convoId,
   forkingSupported = false,
-  getLatestMessageId,
+  latestMessageId,
   isLast = false,
 }: {
   messageId: string;
   conversationId: string | null;
   forkingSupported?: boolean;
-  /** Read when a fork starts: the split target must be the tail at click time. */
-  getLatestMessageId?: () => string | undefined;
+  latestMessageId?: string;
   isLast?: boolean;
 }) {
   const localize = useLocalize();
   const { showToast } = useToastContext();
   const [remember, setRemember] = useState(false);
   const { navigateToConvo } = useNavigateToConvo();
+  const [isActive, setIsActive] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [forkSetting, setForkSetting] = useRecoilState(store.forkSetting);
   const [activeSetting, setActiveSetting] = useState(optionLabels.default);
@@ -225,12 +225,16 @@ function Fork({
   const popoverStore = Ariakit.usePopoverStore({
     placement: 'bottom',
   });
-  /** Read the open state from the store rather than mirroring it: Escape and
-   *  outside clicks close the popover without going through the trigger, so a
-   *  hand-kept copy would leave the button reading as active forever. */
-  const isActive = Ariakit.useStoreState(popoverStore, 'open');
 
-  const buttonStyle = hoverButtonClasses({ isActive, isLast });
+  const buttonStyle = cn(
+    'hover-button rounded-lg p-1.5 text-text-secondary-alt',
+    'hover:text-text-primary hover:bg-surface-hover',
+    'group-hover:visible group-focus-within:visible group-[.final-completion]:visible',
+    !isLast &&
+      'group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:hover)]:opacity-0',
+    'focus-visible:ring-2 focus-visible:ring-black dark:focus-visible:ring-white focus-visible:outline-none',
+    isActive && 'active text-text-primary bg-surface-hover',
+  );
 
   const forkConvo = useForkConvoMutation({
     onSuccess: (data) => {
@@ -278,7 +282,7 @@ function Fork({
       conversationId,
       option,
       splitAtTarget,
-      latestMessageId: getLatestMessageId?.(),
+      latestMessageId,
     });
   };
 
@@ -326,9 +330,7 @@ function Fork({
       <Ariakit.PopoverAnchor
         store={popoverStore}
         render={
-          <Button
-            variant="ghost"
-            size="icon"
+          <button
             className={buttonStyle}
             onClick={(e) => {
               if (rememberGlobal) {
@@ -338,17 +340,18 @@ function Fork({
                   splitAtTarget,
                   conversationId,
                   option: forkSetting,
-                  latestMessageId: getLatestMessageId?.(),
+                  latestMessageId,
                 });
               } else {
                 popoverStore.toggle();
+                setIsActive(popoverStore.getState().open);
               }
             }}
             type="button"
             aria-label={localize('com_ui_fork_open_menu')}
           >
             <GitFork size="19" aria-hidden="true" />
-          </Button>
+          </button>
         }
       />
       <Ariakit.Popover
@@ -362,6 +365,7 @@ function Fork({
         }}
         portal={true}
         unmountOnHide={true}
+        onClose={() => setIsActive(false)}
       >
         <div className="flex h-8 w-full items-center justify-center text-sm text-text-primary">
           {localize(activeSetting)}
@@ -377,7 +381,7 @@ function Fork({
                   </button>
                 }
               />
-              <Ariakit.HovercardDisclosure className="rounded-full text-text-secondary focus:outline-none focus:ring-2 focus:ring-text-primary">
+              <Ariakit.HovercardDisclosure className="rounded-full text-text-secondary focus:outline-none focus:ring-2 focus:ring-ring">
                 <VisuallyHidden>{localize('com_ui_fork_more_info_options')}</VisuallyHidden>
                 {chevronDown}
               </Ariakit.HovercardDisclosure>
@@ -441,6 +445,3 @@ function Fork({
     </>
   );
 }
-
-/** Memoized: a send re-renders every row's toolbar, and nothing here depends on it. */
-export default memo(Fork);

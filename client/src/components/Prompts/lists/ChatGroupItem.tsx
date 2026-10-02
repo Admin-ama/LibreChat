@@ -1,8 +1,9 @@
 import { useState, memo, useRef, useCallback, useId, useMemo } from 'react';
 import * as Ariakit from '@ariakit/react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { PermissionBits, ResourceType } from 'librechat-data-provider';
 import { Ellipsis, Eye, SquarePen, Trash, EarthIcon, User } from 'lucide-react';
+import { PermissionBits, ResourceType } from 'librechat-data-provider';
+import type { TPromptGroup } from 'librechat-data-provider';
 import {
   Label,
   Button,
@@ -13,13 +14,12 @@ import {
   OGDialogTemplate,
   useToastContext,
 } from '@librechat/client';
-import type { TPromptGroup } from 'librechat-data-provider';
 import { useLocalize, useAuthContext, useSubmitMessage, useResourcePermissions } from '~/hooks';
 import { useRecordPromptUsage, useDeletePromptGroup } from '~/data-provider';
+import { useLiveAnnouncer } from '~/Providers';
 import VariableDialog from '../dialogs/VariableDialog';
 import PreviewPrompt from '../dialogs/PreviewPrompt';
 import CategoryIcon from '../utils/CategoryIcon';
-import { useLiveAnnouncer } from '~/Providers';
 import { detectVariables, cn } from '~/utils';
 
 const PROMPT_PATH = '/prompts';
@@ -63,7 +63,7 @@ function ChatGroupItem({
         isStatus: true,
       });
       if (!isChatRoute && params.promptId === group._id) {
-        navigate(PROMPT_PATH, { replace: true });
+        navigate(`${PROMPT_PATH}/new`, { replace: true });
       }
     },
     onError: () => {
@@ -157,15 +157,9 @@ function ChatGroupItem({
           />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
-              <TooltipAnchor
-                description={group.name}
-                side="top"
-                render={
-                  <span className="truncate text-sm font-semibold text-text-primary">
-                    {group.name}
-                  </span>
-                }
-              />
+              <span className="truncate text-sm font-semibold text-text-primary" title={group.name}>
+                {group.name}
+              </span>
               {isSharedPrompt && (
                 <TooltipAnchor
                   description={localize('com_ui_by_author', { 0: group.authorName })}
@@ -193,7 +187,7 @@ function ChatGroupItem({
                       aria-label={localize('com_ui_sr_global_prompt')}
                       className="flex shrink-0 items-center"
                     >
-                      <EarthIcon className="size-3.5 text-accent-primary" aria-hidden="true" />
+                      <EarthIcon className="size-3.5 text-green-400" aria-hidden="true" />
                     </span>
                   }
                 />

@@ -76,14 +76,12 @@ export async function getMCPInstructionsForServers(
       configServers,
     );
     if (mcpInstructions && logger) {
-      logger.debug('[AgentContext] Fetched MCP instructions', {
-        serverCount: mcpServers.length,
-      });
+      logger.debug('[AgentContext] Fetched MCP instructions for servers:', mcpServers);
     }
     return mcpInstructions || '';
-  } catch {
+  } catch (error) {
     if (logger) {
-      logger.error('[AgentContext] Failed to get MCP instructions');
+      logger.error('[AgentContext] Failed to get MCP instructions:', error);
     }
     return '';
   }
@@ -178,9 +176,9 @@ export async function applyContextToAgent({
     });
 
     if (agentId && logger) {
-      logger.debug('[AgentContext] Applied context to agent');
+      logger.debug(`[AgentContext] Applied context to agent: ${agentId}`);
     }
-  } catch {
+  } catch (error) {
     agent.instructions = buildAgentInstructions({
       baseInstructions,
       mcpInstructions: '',
@@ -191,7 +189,10 @@ export async function applyContextToAgent({
     });
 
     if (logger) {
-      logger.error('[AgentContext] Failed to apply context; using base instructions only');
+      logger.error(
+        `[AgentContext] Failed to apply context to agent${agentId ? ` ${agentId}` : ''}, using base instructions only:`,
+        error,
+      );
     }
   }
 }

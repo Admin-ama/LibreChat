@@ -1,6 +1,6 @@
 import React from 'react';
+import { Spinner } from '@librechat/client';
 import { PlugZap, SlidersHorizontal, X } from 'lucide-react';
-import { Button, Spinner, TooltipAnchor } from '@librechat/client';
 import type { MCPServerStatus } from 'librechat-data-provider';
 import { useLocalize } from '~/hooks';
 import { cn } from '~/utils';
@@ -71,7 +71,7 @@ export default function MCPServerStatusIcon({
     return null;
   }
 
-  const { connectionState, requestScoped } = serverStatus;
+  const { connectionState } = serverStatus;
 
   // Connecting: show spinner, with cancel when an OAuth flow is pending.
   if (connectionState === 'connecting') {
@@ -87,13 +87,6 @@ export default function MCPServerStatusIcon({
     }
 
     return <ConnectingSpinner serverName={serverName} />;
-  }
-
-  // Request-scoped servers can only be connected while serving an MCP request.
-  if ((connectionState === 'disconnected' || connectionState === 'error') && requestScoped) {
-    return hasCustomUserVars ? (
-      <ConfigureButton serverName={serverName} onConfigClick={onConfigClick} />
-    ) : null;
   }
 
   // Disconnected or Error: show connect button (PlugZap icon)
@@ -118,34 +111,27 @@ interface CompactStatusDotProps {
 function CompactStatusDot({ serverStatus, isInitializing }: CompactStatusDotProps) {
   if (isInitializing) {
     return (
-      /** `status-info` rather than `-strong`: the strong slot is a neutral grey
-       *  in both standard palettes, so using it turned this blue dot grey. The
-       *  pulse takes the on-status ink so it inverts with the fill. */
-      <div className="flex size-3.5 items-center justify-center rounded-full border-2 border-surface-secondary bg-status-info">
-        <div className="size-1.5 animate-pulse rounded-full bg-text-on-status" />
+      <div className="flex size-3.5 items-center justify-center rounded-full border-2 border-surface-secondary bg-blue-500">
+        <div className="size-1.5 animate-pulse rounded-full bg-white" />
       </div>
     );
   }
 
   if (!serverStatus) {
-    return (
-      <div className="size-3 rounded-full border-2 border-surface-secondary bg-status-neutral" />
-    );
+    return <div className="size-3 rounded-full border-2 border-surface-secondary bg-gray-400" />;
   }
 
   const { connectionState, requiresOAuth } = serverStatus;
 
-  let colorClass = 'bg-status-neutral';
-  if (connectionState === 'connecting') {
-    colorClass = 'bg-status-info';
-  } else if (serverStatus.requestScoped) {
-    colorClass = 'bg-status-info';
-  } else if (connectionState === 'connected') {
-    colorClass = 'bg-status-success';
+  let colorClass = 'bg-gray-400';
+  if (connectionState === 'connected') {
+    colorClass = 'bg-green-500';
+  } else if (connectionState === 'connecting') {
+    colorClass = 'bg-blue-500';
   } else if (connectionState === 'error') {
-    colorClass = 'bg-status-error';
+    colorClass = 'bg-red-500';
   } else if (connectionState === 'disconnected' && requiresOAuth) {
-    colorClass = 'bg-status-warning';
+    colorClass = 'bg-amber-500';
   }
 
   return (
@@ -156,23 +142,18 @@ function CompactStatusDot({ serverStatus, isInitializing }: CompactStatusDotProp
 function LoadingStatusIcon({ serverName, onCancel, canCancel }: InitializingStatusProps) {
   if (canCancel) {
     return (
-      <TooltipAnchor
-        description={localize('com_ui_cancel')}
-        render={
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onCancel}
-            className="group size-6 rounded p-1 hover:bg-status-error-subtle"
-            aria-label={localize('com_ui_cancel')}
-          >
-            <div className="relative size-4">
-              <Spinner className="size-4 text-text-primary group-hover:opacity-0" />
-              <X className="absolute inset-0 size-4 text-text-destructive opacity-0 group-hover:opacity-100" />
-            </div>
-          </Button>
-        }
-      />
+      <button
+        type="button"
+        onClick={onCancel}
+        className="group flex size-6 items-center justify-center rounded p-1 hover:bg-red-100 dark:hover:bg-red-900/20"
+        aria-label={localize('com_ui_cancel')}
+        title={localize('com_ui_cancel')}
+      >
+        <div className="relative size-4">
+          <Spinner className="size-4 text-text-primary group-hover:opacity-0" />
+          <X className="absolute inset-0 size-4 text-red-500 opacity-0 group-hover:opacity-100" />
+        </div>
+      </button>
     );
   }
 
@@ -200,29 +181,27 @@ function ConnectingSpinner({ serverName }: { serverName: string }) {
 /** Connect button - shown for disconnected/error states. Uses PlugZap icon. */
 function ConnectButton({ serverName, onConfigClick }: StatusIconProps) {
   return (
-    <Button
-      variant="ghost"
-      size="icon"
+    <button
+      type="button"
       onClick={onConfigClick}
-      className="size-6 rounded p-1 hover:bg-surface-secondary"
+      className="flex size-6 items-center justify-center rounded p-1 hover:bg-surface-secondary"
       aria-label={localize('com_nav_mcp_connect_server', { 0: serverName })}
     >
       <PlugZap className="size-4 text-text-secondary" aria-hidden="true" />
-    </Button>
+    </button>
   );
 }
 
 /** Configure button - shown for connected servers with custom vars. Uses SlidersHorizontal icon. */
 function ConfigureButton({ serverName, onConfigClick }: StatusIconProps) {
   return (
-    <Button
-      variant="ghost"
-      size="icon"
+    <button
+      type="button"
       onClick={onConfigClick}
-      className="size-6 rounded p-1 hover:bg-surface-secondary"
+      className="flex size-6 items-center justify-center rounded p-1 hover:bg-surface-secondary"
       aria-label={localize('com_nav_mcp_configure_server', { 0: serverName })}
     >
       <SlidersHorizontal className="size-4 text-text-secondary" aria-hidden="true" />
-    </Button>
+    </button>
   );
 }

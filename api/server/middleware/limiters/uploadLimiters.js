@@ -29,7 +29,7 @@ const getEnvironmentVariables = () => {
   };
 };
 
-const createFileUploadHandler = (ip = true, onLimit) => {
+const createFileUploadHandler = (ip = true) => {
   const {
     fileUploadIpMax,
     fileUploadIpWindowInMinutes,
@@ -48,21 +48,18 @@ const createFileUploadHandler = (ip = true, onLimit) => {
     };
 
     await logViolation(req, res, type, errorMessage, fileUploadViolationScore);
-    if (onLimit) {
-      return onLimit(req, res);
-    }
     res.status(429).json({ message: 'Too many file upload requests. Try again later' });
   };
 };
 
-const createFileLimiters = ({ onLimit } = {}) => {
+const createFileLimiters = () => {
   const { fileUploadIpWindowMs, fileUploadIpMax, fileUploadUserWindowMs, fileUploadUserMax } =
     getEnvironmentVariables();
 
   const ipLimiterOptions = {
     windowMs: fileUploadIpWindowMs,
     max: fileUploadIpMax,
-    handler: createFileUploadHandler(true, onLimit),
+    handler: createFileUploadHandler(),
     keyGenerator: removePorts,
     store: limiterCache('file_upload_ip_limiter'),
   };
@@ -70,7 +67,7 @@ const createFileLimiters = ({ onLimit } = {}) => {
   const userLimiterOptions = {
     windowMs: fileUploadUserWindowMs,
     max: fileUploadUserMax,
-    handler: createFileUploadHandler(false, onLimit),
+    handler: createFileUploadHandler(false),
     keyGenerator: function (req) {
       return req.user?.id;
     },

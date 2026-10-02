@@ -138,18 +138,15 @@ test.describe('prompt manager', () => {
       await page.goto(NEW_CHAT_PATH, { timeout: 10000 });
       await openPromptsPanel(page);
 
-      await page.getByRole('button', { name: 'Create Prompt' }).click();
+      await page.getByRole('link', { name: 'Create Prompt' }).click();
+      await expect(page).toHaveURL(/\/prompts\/new$/);
 
-      /** Prompts are created from a dialog rather than a dedicated page */
-      const createDialog = page.getByRole('dialog');
-      await expect(createDialog).toBeVisible();
-
-      await createDialog.getByRole('textbox', { name: 'Prompt Name' }).fill(promptName);
-      await createDialog.getByRole('textbox', { name: 'Prompt text input field' }).fill(promptText);
-      await createDialog
+      await page.getByRole('textbox', { name: 'Prompt Name' }).fill(promptName);
+      await page.getByRole('textbox', { name: 'Prompt text input field' }).fill(promptText);
+      await page
         .getByRole('textbox', { name: 'Optional: Enter a description to display for the prompt' })
         .fill(DESCRIPTION);
-      await createDialog
+      await page
         .getByRole('textbox', {
           name: 'Optional: Enter a command for the prompt or name will be used',
         })
@@ -164,7 +161,7 @@ test.describe('prompt manager', () => {
             response.status() < 300,
           { timeout: 30000 },
         ),
-        createDialog.getByRole('button', { name: 'Create Prompt' }).click(),
+        page.getByRole('button', { name: 'Create Prompt' }).click(),
       ]);
       const createdPrompt = (await createResponse.json()) as {
         group?: PromptGroup;

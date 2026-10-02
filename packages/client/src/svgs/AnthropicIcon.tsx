@@ -13,7 +13,7 @@ export default function AnthropicIcon({
       overflow="visible"
       width={size}
       height={size}
-      className={cn('fill-current', className)}
+      className={cn('fill-current text-black', className)}
       aria-hidden="true"
     >
       <g

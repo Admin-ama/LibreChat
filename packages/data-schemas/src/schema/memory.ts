@@ -1,12 +1,6 @@
 import { Schema } from 'mongoose';
 import type { IMemoryEntry } from '~/types/memory';
 
-const MEMORY_KEY_REGEX = /^[a-z_]+$/;
-
-export function isValidMemoryKey(key: string): boolean {
-  return MEMORY_KEY_REGEX.test(key);
-}
-
 const MemoryEntrySchema: Schema<IMemoryEntry> = new Schema({
   userId: {
     type: Schema.Types.ObjectId,
@@ -18,7 +12,7 @@ const MemoryEntrySchema: Schema<IMemoryEntry> = new Schema({
     type: String,
     required: true,
     validate: {
-      validator: isValidMemoryKey,
+      validator: (v: string) => /^[a-z_]+$/.test(v),
       message: 'Key must only contain lowercase letters and underscores',
     },
   },

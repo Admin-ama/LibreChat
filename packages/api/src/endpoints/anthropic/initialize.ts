@@ -1,12 +1,7 @@
 import { EModelEndpoint, AuthKeys } from 'librechat-data-provider';
-import type {
-  InitializeResultBase,
-  AnthropicConfigOptions,
-  ProviderInitializeParams,
-} from '~/types';
+import type { BaseInitializeParams, InitializeResultBase, AnthropicConfigOptions } from '~/types';
 import { loadAnthropicVertexCredentials, getVertexCredentialOptions } from './vertex';
 import { checkUserKeyExpiry, isEnabled, mergeHeaders } from '~/utils';
-import { resolveEndpointRuntime } from '~/types';
 import { getLLMConfig } from './llm';
 
 /**
@@ -17,14 +12,16 @@ import { getLLMConfig } from './llm';
  * @returns Promise resolving to Anthropic configuration options
  * @throws Error if API key is not provided (when not using Vertex AI)
  */
-export async function initializeAnthropic(
-  params: ProviderInitializeParams,
-): Promise<InitializeResultBase> {
-  const { endpoint, model_parameters, db } = params;
-  const { appConfig, user, requestBody } = resolveEndpointRuntime(params);
+export async function initializeAnthropic({
+  req,
+  endpoint,
+  model_parameters,
+  db,
+}: BaseInitializeParams): Promise<InitializeResultBase> {
   void endpoint;
+  const appConfig = req.config;
   const { ANTHROPIC_API_KEY, ANTHROPIC_REVERSE_PROXY, PROXY } = process.env;
-  const { key: expiresAt } = requestBody;
+  const { key: expiresAt } = req.body;
 
   let credentials: Record<string, unknown> = {};
   let vertexOptions: { region?: string; projectId?: string } | undefined;
@@ -53,7 +50,7 @@ export async function initializeAnthropic(
     const isUserProvided = ANTHROPIC_API_KEY === 'user_provided';
 
     const anthropicApiKey = isUserProvided
-      ? await db.getUserKey({ userId: user?.id ?? '', name: EModelEndpoint.anthropic })
+      ? await db.getUserKey({ userId: req.user?.id ?? '', name: EModelEndpoint.anthropic })
       : ANTHROPIC_API_KEY;
 
     if (!anthropicApiKey) {
@@ -77,7 +74,7 @@ export async function initializeAnthropic(
     reverseProxyUrl: ANTHROPIC_REVERSE_PROXY ?? undefined,
     modelOptions: {
       ...(model_parameters ?? {}),
-      user: user?.id,
+      user: req.user?.id,
     },
     ...(headers && { headers }),
     // Pass Vertex AI options if configured
@@ -88,12 +85,12 @@ export async function initializeAnthropic(
 
   const result = getLLMConfig(credentials, clientOptions);
 
-  if (anthropicConfig?.streamRate != null) {
-    result.llmConfig._lc_stream_delay = anthropicConfig.streamRate;
+  if (anthropicConfig?.streamRate) {
+    (result.llmConfig as Record<string, unknown>)._lc_stream_delay = anthropicConfig.streamRate;
   }
 
-  if (allConfig?.streamRate != null) {
-    result.llmConfig._lc_stream_delay = allConfig.streamRate;
+  if (allConfig?.streamRate) {
+    (result.llmConfig as Record<string, unknown>)._lc_stream_delay = allConfig.streamRate;
   }
 
   return result;

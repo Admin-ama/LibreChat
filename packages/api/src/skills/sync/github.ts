@@ -11,9 +11,6 @@ import {
 import type {
   ISkill,
   ISkillFile,
-  ValidationIssue,
-  ISkillSyncSkippedFile,
-  ISkillSyncSkippedSkill,
   CreateSkillInput,
   UpdateSkillInput,
   CreateSkillResult,
@@ -23,84 +20,71 @@ import type {
   SkillSyncProvider,
   SkillSyncCredentialSummary,
   SkillSyncStatusInput,
-  DeleteSkillResult,
 } from '@librechat/data-schemas';
 import type { SkillSyncConfig, SkillSyncGitHubSourceConfig } from 'librechat-data-provider';
-import type {
-  RepoCommit,
-  RepoTreeEntry,
-  GitRepoAdapter,
-  AssertNotCancelled,
-} from './adapters/types';
-import type { GitHubRepoAdapterConfig } from './adapters/github';
-import {
-  GITHUB_FINE_GRAINED_TOKEN_RECOMMENDATION,
-  createGitHubRepoAdapter,
-} from './adapters/github';
 import { DEFAULT_SKILL_IMPORT_LIMITS } from '../limits';
 import { parseSkillMarkdown } from '../parse';
-import { normalizeRepoPath } from './path';
-import { SkillSyncError } from './errors';
 
+const GITHUB_API_BASE = 'https://api.github.com';
+const SYSTEM_AUTHOR_ID = new Types.ObjectId('000000000000000000000000');
 const SYSTEM_AUTHOR_NAME = 'GitHub Sync';
-
-let systemAuthorId: Types.ObjectId | undefined;
-
-/** Constructed on demand so importing this module never depends on a live mongoose binding. */
-function getSystemAuthorId(): Types.ObjectId {
-  systemAuthorId ??= new Types.ObjectId('000000000000000000000000');
-  return systemAuthorId;
-}
 const PROVIDER: SkillSyncProvider = 'github';
 const LOCK_LEASE_MS = 30 * 60 * 1000;
-/** Keeps a pathological source from writing an unbounded status document. */
-const MAX_RECORDED_SKIPPED_SKILLS = 20;
-/** Same bound for files, which a single malformed source can produce far more of. */
-const MAX_RECORDED_SKIPPED_FILES = 20;
-const UNSUPPORTED_FILE_PATH_CODE = 'SKILL_FILE_PATH_UNSUPPORTED';
-const UNSUPPORTED_FILE_PATH_MESSAGE =
-  'File path uses characters that skill file paths cannot represent';
-/** Shared cap for skipped-skill and successful-skill validation warning logs. */
-const MAX_LOGGED_PER_SKILL_WARNINGS = 20;
-const SKIP_PATH_MAX = 500;
-const SKIP_NAME_MAX = 128;
-const SKIP_MESSAGE_MAX = 500;
-const VALIDATION_ISSUE_LIMIT = 5;
-const VALIDATION_ISSUE_FIELD_MAX = 100;
-const VALIDATION_ISSUE_CODE_MAX = 64;
-const VALIDATION_ISSUE_MESSAGE_MAX = 250;
 
-export { GITHUB_FINE_GRAINED_TOKEN_RECOMMENDATION };
-export type { GitHubRepoAdapterConfig };
+export const GITHUB_FINE_GRAINED_TOKEN_RECOMMENDATION =
+  'Use a GitHub fine-grained personal access token scoped to the selected repository with read-only Contents and Metadata permissions.';
 
 type FetchFn = typeof fetch;
+
+type GitHubTreeEntry = {
+  path: string;
+  mode: string;
+  type: 'blob' | 'tree' | 'commit';
+  sha: string;
+  size?: number;
+  url: string;
+};
+
+type GitHubTreeResponse = {
+  sha: string;
+  tree: GitHubTreeEntry[];
+  truncated: boolean;
+};
+
+type GitHubBlobResponse = {
+  sha: string;
+  content: string;
+  encoding: string;
+  size: number;
+};
+
+type GitHubCommitResponse = {
+  sha: string;
+  commit: {
+    tree: {
+      sha: string;
+    };
+  };
+};
 
 type SyncCounters = {
   syncedSkillCount: number;
   syncedFileCount: number;
   deletedSkillCount: number;
   deletedFileCount: number;
-  skippedSkillCount: number;
-  skippedFileCount: number;
 };
+
+type AssertNotCancelled = () => void;
 
 type DiscoveredSkill = {
   rootPath: string;
-  skillMd: RepoTreeEntry;
-  files: RepoTreeEntry[];
-  /**
-   * Repository paths under the skill root that exist upstream but cannot be
-   * mirrored, because their path is not representable as a skill file path.
-   * Dropping them silently would publish a skill that looks complete while
-   * missing files, so they are carried out to the sync status instead.
-   */
-  unsupportedFiles: string[];
+  skillMd: GitHubTreeEntry;
+  files: GitHubTreeEntry[];
 };
 
 type UpsertRemoteSkillResult = {
   skill: ISkill & { _id: Types.ObjectId };
   created: boolean;
-  warnings?: ValidationIssue[];
 };
 
 type PreparedRemoteSkill = {
@@ -207,7 +191,7 @@ export type GitHubSkillSyncDeps = {
     skillId: string | Types.ObjectId,
     relativePath: string,
   ) => Promise<{ deleted: boolean }>;
-  deleteSkill: (id: string) => Promise<DeleteSkillResult>;
+  deleteSkill: (id: string) => Promise<{ deleted: boolean }>;
   saveBuffer: (params: {
     userId: string;
     buffer: Buffer;
@@ -233,12 +217,6 @@ export type GitHubSkillSyncDeps = {
     grantedBy: string | Types.ObjectId;
   }) => Promise<unknown>;
   fetchFn?: FetchFn;
-  /**
-   * Builds the repository client a source is synced through. Defaults to the
-   * GitHub adapter; overridable so the orchestration can be exercised against a
-   * fake repository without standing up provider HTTP responses.
-   */
-  createAdapter?: (config: GitHubRepoAdapterConfig) => GitRepoAdapter;
   lockOwner?: string;
   allowServerCredentials?: boolean;
 };
@@ -262,6 +240,21 @@ export type GitHubSkillSyncRunner = {
   getStatus: () => Promise<GitHubSkillSyncStatus>;
   runOnce: () => Promise<GitHubSkillSyncRunResult>;
 };
+
+class SkillSyncError extends Error {
+  code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = 'SkillSyncError';
+    this.code = code;
+  }
+}
+
+function normalizeRepoPath(value: string): string {
+  const trimmed = value.trim().replace(/^\/+|\/+$/g, '');
+  return trimmed === '.' ? '' : trimmed;
+}
 
 function isSafeRelativePath(value: string): boolean {
   if (!value || value.startsWith('/') || value.startsWith('\\')) {
@@ -367,7 +360,7 @@ function getLimitMegabytes(bytes: number): number {
   return Math.round(bytes / 1024 / 1024);
 }
 
-function assertGitHubBlobSize(entry: RepoTreeEntry, relativePath: string): number {
+function assertGitHubBlobSize(entry: GitHubTreeEntry, relativePath: string): number {
   if (typeof entry.size !== 'number' || !Number.isFinite(entry.size) || entry.size < 0) {
     throw new SkillSyncError(
       'GITHUB_BLOB_SIZE_UNKNOWN',
@@ -424,7 +417,7 @@ function getSkillMdPath(discovered: DiscoveredSkill): string {
   return discovered.rootPath ? `${discovered.rootPath}/SKILL.md` : 'SKILL.md';
 }
 
-function getDiscoveredRelativePath(discovered: DiscoveredSkill, entry: RepoTreeEntry): string {
+function getDiscoveredRelativePath(discovered: DiscoveredSkill, entry: GitHubTreeEntry): string {
   const prefix = discovered.rootPath ? `${discovered.rootPath}/` : '';
   const normalized = normalizeRepoPath(entry.path);
   return prefix ? normalized.slice(prefix.length) : normalized;
@@ -457,187 +450,220 @@ function serializeDate(date: Date): string {
   return date.toISOString();
 }
 
-function redactErrorText(value: string): string {
-  return value.replace(/Bearer\s+\S+/gi, 'Bearer [redacted]');
-}
-
-function escapeDiagnosticControlCharacters(value: string): string {
-  let escaped = '';
-  for (const character of value) {
-    const codePoint = character.charCodeAt(0);
-    if (
-      !(
-        (codePoint >= 0 && codePoint <= 0x1f) ||
-        (codePoint >= 0x7f && codePoint <= 0x9f) ||
-        codePoint === 0x2028 ||
-        codePoint === 0x2029
-      )
-    ) {
-      escaped += character;
-      continue;
-    }
-    switch (character) {
-      case '\n':
-        escaped += '\\n';
-        break;
-      case '\r':
-        escaped += '\\r';
-        break;
-      case '\t':
-        escaped += '\\t';
-        break;
-      default:
-        escaped += `\\u${codePoint.toString(16).padStart(4, '0')}`;
-    }
-  }
-  return escaped;
-}
-
-function sanitizeDiagnosticText(value: string): string {
-  return escapeDiagnosticControlCharacters(redactErrorText(value));
-}
-
-function truncateText(value: string, maxLength: number): string {
-  return value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
-}
-
-function summarizeValidationIssues(issues: unknown): string | undefined {
-  if (!Array.isArray(issues)) {
-    return undefined;
-  }
-  const summaries: string[] = [];
-  for (const rawIssue of issues.slice(0, VALIDATION_ISSUE_LIMIT)) {
-    if (!rawIssue || typeof rawIssue !== 'object') {
-      continue;
-    }
-    const issue = rawIssue as Partial<ValidationIssue>;
-    if (
-      typeof issue.field !== 'string' ||
-      typeof issue.code !== 'string' ||
-      typeof issue.message !== 'string'
-    ) {
-      continue;
-    }
-    const field = truncateText(sanitizeDiagnosticText(issue.field), VALIDATION_ISSUE_FIELD_MAX);
-    const code = truncateText(sanitizeDiagnosticText(issue.code), VALIDATION_ISSUE_CODE_MAX);
-    const message = truncateText(
-      sanitizeDiagnosticText(issue.message),
-      VALIDATION_ISSUE_MESSAGE_MAX,
-    );
-    summaries.push(`${field} [${code}]: ${message}`);
-  }
-  if (summaries.length === 0) {
-    return undefined;
-  }
-  if (issues.length > VALIDATION_ISSUE_LIMIT) {
-    summaries.push(`+${issues.length - VALIDATION_ISSUE_LIMIT} more issue(s)`);
-  }
-  return summaries.join('; ');
-}
-
 function sanitizeError(error: unknown): { code: string; message: string } {
   if (error instanceof SkillSyncError) {
-    return { code: error.code, message: sanitizeDiagnosticText(error.message) };
+    return { code: error.code, message: error.message };
   }
   if (error instanceof Error) {
-    const message = sanitizeDiagnosticText(error.message);
-    const validationError = error as Error & { code?: unknown; issues?: unknown };
-    if (validationError.code === 'SKILL_VALIDATION_FAILED') {
-      const issueSummary = summarizeValidationIssues(validationError.issues);
-      return {
-        code: 'SKILL_VALIDATION_FAILED',
-        message: truncateSkipMessage(issueSummary ? `${message}: ${issueSummary}` : message),
-      };
-    }
     return {
       code: 'SYNC_FAILED',
-      message,
+      message: error.message.replace(/Bearer\s+\S+/gi, 'Bearer [redacted]'),
     };
   }
   return { code: 'SYNC_FAILED', message: 'Unknown skill sync failure' };
 }
 
-/**
- * Failures that say nothing more in this run can succeed: the lock is gone, or
- * GitHub is refusing every request. They abort the source instead of being
- * charged to the skill that happened to hit them first. Everything else is
- * scoped to one skill and only skips that skill.
- */
-const SOURCE_FATAL_ERROR_CODES = new Set([
-  'SYNC_LOCK_LOST',
-  'GITHUB_AUTH_FAILED',
-  'GITHUB_RATE_LIMITED',
-  'GITHUB_REQUEST_FAILED',
-  'SYNC_ROLLBACK_FAILED',
-]);
-
-/**
- * A skill that fails and rolls back cleanly is just a skipped skill. One whose
- * rollback also fails leaves a half-written mirror behind, and reporting that
- * as `partial` alongside the skills that did publish would bury it, so it ends
- * the source instead.
- */
-function makeRollbackFailure(error: unknown): SkillSyncError {
-  return new SkillSyncError(
-    'SYNC_ROLLBACK_FAILED',
-    `Rollback failed after: ${sanitizeError(error).message}`,
-  );
+function buildGitHubHeaders(token: string): HeadersInit {
+  return {
+    Accept: 'application/vnd.github+json',
+    Authorization: `Bearer ${token}`,
+    'X-GitHub-Api-Version': '2022-11-28',
+    'User-Agent': 'LibreChat-Skill-Sync',
+  };
 }
 
-function makeStaleDeletionFailure(error: unknown): SkillSyncError {
-  return new SkillSyncError(
-    'SYNC_ROLLBACK_FAILED',
-    `Stale mirror deletion failed: ${sanitizeError(error).message}`,
-  );
+function buildGitHubUrl(pathname: string): string {
+  return `${GITHUB_API_BASE}${pathname}`;
 }
 
-function isSourceFatalError(error: unknown): boolean {
-  return error instanceof SkillSyncError && SOURCE_FATAL_ERROR_CODES.has(error.code);
+function encodeGitHubPath(value: string): string {
+  return value.split('/').map(encodeURIComponent).join('/');
 }
 
-function truncateSkipMessage(message: string): string {
-  const sanitized = escapeDiagnosticControlCharacters(message);
-  return sanitized.length > SKIP_MESSAGE_MAX
-    ? `${sanitized.slice(0, SKIP_MESSAGE_MAX - 1)}…`
-    : sanitized;
-}
-
-function truncateSkipPath(path: string): string {
-  const sanitized = escapeDiagnosticControlCharacters(path);
-  return sanitized.length > SKIP_PATH_MAX ? `${sanitized.slice(0, SKIP_PATH_MAX - 1)}…` : sanitized;
-}
-
-function truncateSkipName(name: string | undefined): string | undefined {
-  if (!name) {
-    return name;
+async function readGitHubErrorMessage(response: Response): Promise<string | undefined> {
+  try {
+    const body = (await response.json()) as { message?: unknown };
+    return typeof body.message === 'string' ? body.message : undefined;
+  } catch {
+    return undefined;
   }
-  const sanitized = escapeDiagnosticControlCharacters(name);
-  return sanitized.length > SKIP_NAME_MAX ? `${sanitized.slice(0, SKIP_NAME_MAX - 1)}…` : sanitized;
 }
 
-/**
- * Merges the recursive listings of every configured path into one entry set.
- * Configured paths may nest, so entries are deduplicated on their normalized
- * repository path rather than concatenated.
- */
-async function fetchConfiguredTreeEntries(params: {
-  adapter: GitRepoAdapter;
-  commit: RepoCommit;
+function isGitHubRateLimitResponse(params: {
+  status: number;
+  remaining: string | null;
+  retryAfter: string | null;
+  message?: string;
+}): boolean {
+  if (params.status === 429 || params.remaining === '0' || params.retryAfter) {
+    return true;
+  }
+  const message = params.message?.toLowerCase() ?? '';
+  return message.includes('rate limit') || message.includes('abuse detection');
+}
+
+async function githubJson<T>(params: {
+  fetchFn: FetchFn;
+  token: string;
+  pathname: string;
+}): Promise<T> {
+  const response = await params.fetchFn(buildGitHubUrl(params.pathname), {
+    headers: buildGitHubHeaders(params.token),
+  });
+  if (response.ok) {
+    return (await response.json()) as T;
+  }
+  const remaining = response.headers.get('x-ratelimit-remaining');
+  const retryAfter = response.headers.get('retry-after');
+  const message = await readGitHubErrorMessage(response);
+  if (response.status === 401 || response.status === 403 || response.status === 429) {
+    const code = isGitHubRateLimitResponse({
+      status: response.status,
+      remaining,
+      retryAfter,
+      message,
+    })
+      ? 'GITHUB_RATE_LIMITED'
+      : 'GITHUB_AUTH_FAILED';
+    throw new SkillSyncError(code, `GitHub request failed with HTTP ${response.status}`);
+  }
+  if (response.status === 404) {
+    throw new SkillSyncError('GITHUB_NOT_FOUND', 'GitHub repository, ref, or path was not found');
+  }
+  throw new SkillSyncError(
+    'GITHUB_REQUEST_FAILED',
+    `GitHub request failed with HTTP ${response.status}`,
+  );
+}
+
+async function fetchCommit(params: {
+  fetchFn: FetchFn;
+  token: string;
   source: SkillSyncGitHubSourceConfig;
+}): Promise<GitHubCommitResponse> {
+  const owner = encodeURIComponent(params.source.owner);
+  const repo = encodeURIComponent(params.source.repo);
+  const ref = encodeGitHubPath(params.source.ref);
+  return githubJson<GitHubCommitResponse>({
+    fetchFn: params.fetchFn,
+    token: params.token,
+    pathname: `/repos/${owner}/${repo}/commits/${ref}`,
+  });
+}
+
+async function fetchTree(params: {
+  fetchFn: FetchFn;
+  token: string;
+  source: SkillSyncGitHubSourceConfig;
+  treeSha: string;
+  recursive?: boolean;
+}): Promise<GitHubTreeResponse> {
+  const owner = encodeURIComponent(params.source.owner);
+  const repo = encodeURIComponent(params.source.repo);
+  const treeSha = encodeURIComponent(params.treeSha);
+  const recursive = params.recursive ?? true;
+  return githubJson<GitHubTreeResponse>({
+    fetchFn: params.fetchFn,
+    token: params.token,
+    pathname: `/repos/${owner}/${repo}/git/trees/${treeSha}${recursive ? '?recursive=1' : ''}`,
+  });
+}
+
+async function fetchTreeAtPath(params: {
+  fetchFn: FetchFn;
+  token: string;
+  source: SkillSyncGitHubSourceConfig;
+  rootTreeSha: string;
+  repoPath: string;
   assertNotCancelled: AssertNotCancelled;
-}): Promise<RepoTreeEntry[]> {
-  const entriesByPath = new Map<string, RepoTreeEntry>();
+}): Promise<GitHubTreeEntry[]> {
+  const normalizedPath = normalizeRepoPath(params.repoPath);
+  let treeSha = params.rootTreeSha;
+  if (normalizedPath) {
+    for (const segment of normalizedPath.split('/')) {
+      params.assertNotCancelled();
+      const tree = await fetchTree({
+        fetchFn: params.fetchFn,
+        token: params.token,
+        source: params.source,
+        treeSha,
+        recursive: false,
+      });
+      params.assertNotCancelled();
+      if (tree.truncated) {
+        throw new SkillSyncError('GITHUB_TREE_TRUNCATED', 'GitHub tree response was truncated');
+      }
+      const next = tree.tree.find((entry) => entry.type === 'tree' && entry.path === segment);
+      if (!next) {
+        throw new SkillSyncError(
+          'GITHUB_PATH_NOT_FOUND',
+          `Configured GitHub skill path "${normalizedPath}" was not found`,
+        );
+      }
+      treeSha = next.sha;
+    }
+  }
+
+  params.assertNotCancelled();
+  const tree = await fetchTree({
+    fetchFn: params.fetchFn,
+    token: params.token,
+    source: params.source,
+    treeSha,
+    recursive: true,
+  });
+  params.assertNotCancelled();
+  if (tree.truncated) {
+    throw new SkillSyncError('GITHUB_TREE_TRUNCATED', 'GitHub tree response was truncated');
+  }
+  if (!normalizedPath) {
+    return tree.tree;
+  }
+  return tree.tree.map((entry) => ({
+    ...entry,
+    path: `${normalizedPath}/${normalizeRepoPath(entry.path)}`,
+  }));
+}
+
+async function fetchConfiguredTreeEntries(params: {
+  fetchFn: FetchFn;
+  token: string;
+  source: SkillSyncGitHubSourceConfig;
+  rootTreeSha: string;
+  assertNotCancelled: AssertNotCancelled;
+}): Promise<GitHubTreeEntry[]> {
+  const entriesByPath = new Map<string, GitHubTreeEntry>();
   for (const repoPath of params.source.paths) {
-    const entries = await params.adapter.fetchTreeEntries(params.commit, {
-      pathPrefix: repoPath,
-      assertNotCancelled: params.assertNotCancelled,
-    });
+    const entries = await fetchTreeAtPath({ ...params, repoPath });
     for (const entry of entries) {
       const normalizedPath = normalizeRepoPath(entry.path);
       entriesByPath.set(normalizedPath, { ...entry, path: normalizedPath });
     }
   }
   return [...entriesByPath.values()];
+}
+
+async function fetchBlob(params: {
+  fetchFn: FetchFn;
+  token: string;
+  source: SkillSyncGitHubSourceConfig;
+  sha: string;
+}): Promise<Buffer> {
+  const owner = encodeURIComponent(params.source.owner);
+  const repo = encodeURIComponent(params.source.repo);
+  const sha = encodeURIComponent(params.sha);
+  const blob = await githubJson<GitHubBlobResponse>({
+    fetchFn: params.fetchFn,
+    token: params.token,
+    pathname: `/repos/${owner}/${repo}/git/blobs/${sha}`,
+  });
+  if (blob.encoding !== 'base64') {
+    throw new SkillSyncError(
+      'GITHUB_UNSUPPORTED_BLOB',
+      `Unsupported GitHub blob encoding "${blob.encoding}"`,
+    );
+  }
+  return Buffer.from(blob.content.replace(/\s/g, ''), 'base64');
 }
 
 function isSkillRootWithinDiscoveryDepth(
@@ -659,12 +685,12 @@ function isSkillRootWithinDiscoveryDepth(
 }
 
 function discoverSkills(
-  tree: RepoTreeEntry[],
+  tree: GitHubTreeEntry[],
   source: SkillSyncGitHubSourceConfig,
 ): DiscoveredSkill[] {
   const basePaths = source.paths.map(normalizeRepoPath);
   const skillDiscoveryDepth = source.skillDiscoveryDepth ?? SKILL_SYNC_DEFAULT_DISCOVERY_DEPTH;
-  const skillMdByRoot = new Map<string, RepoTreeEntry>();
+  const skillMdByRoot = new Map<string, GitHubTreeEntry>();
   for (const entry of tree) {
     if (entry.type !== 'blob') {
       continue;
@@ -691,35 +717,26 @@ function discoverSkills(
       }
       return rootPath ? candidate.startsWith(`${rootPath}/`) : true;
     });
-    const files: RepoTreeEntry[] = [];
-    const unsupportedFiles: string[] = [];
-    for (const entry of tree) {
+    const files = tree.filter((entry) => {
       if (entry.type !== 'blob') {
-        continue;
+        return false;
       }
       const normalized = normalizeRepoPath(entry.path);
       if (!normalized.startsWith(prefix) || normalized === skillMd.path) {
-        continue;
+        return false;
       }
       if (childSkillRoots.some((childRoot) => normalized.startsWith(`${childRoot}/`))) {
-        continue;
+        return false;
       }
       const relativePath = prefix ? normalized.slice(prefix.length) : normalized;
-      if (relativePath.toUpperCase() === 'SKILL.MD') {
-        continue;
-      }
-      if (!isSafeRelativePath(relativePath)) {
-        unsupportedFiles.push(normalized);
-        continue;
-      }
-      files.push(entry);
-    }
-    return { rootPath, skillMd, files, unsupportedFiles };
+      return isSafeRelativePath(relativePath) && relativePath.toUpperCase() !== 'SKILL.MD';
+    });
+    return { rootPath, skillMd, files };
   });
 }
 
 function assertConfiguredPathsExist(
-  tree: RepoTreeEntry[],
+  tree: GitHubTreeEntry[],
   source: SkillSyncGitHubSourceConfig,
 ): void {
   for (const configuredPath of source.paths.map(normalizeRepoPath)) {
@@ -747,8 +764,6 @@ function makeStatusInput(params: {
   errorCode?: string;
   errorMessage?: string;
   counts?: Partial<SyncCounters>;
-  skippedSkills?: ISkillSyncSkippedSkill[];
-  skippedFiles?: ISkillSyncSkippedFile[];
 }): SkillSyncStatusInput {
   return {
     provider: PROVIDER,
@@ -768,10 +783,6 @@ function makeStatusInput(params: {
     syncedFileCount: params.counts?.syncedFileCount ?? 0,
     deletedSkillCount: params.counts?.deletedSkillCount ?? 0,
     deletedFileCount: params.counts?.deletedFileCount ?? 0,
-    skippedSkillCount: params.counts?.skippedSkillCount ?? 0,
-    skippedSkills: params.skippedSkills,
-    skippedFileCount: params.counts?.skippedFileCount ?? 0,
-    skippedFiles: params.skippedFiles,
   };
 }
 
@@ -789,7 +800,7 @@ async function ensurePublicViewer(
     resourceType: ResourceType.SKILL,
     resourceId: skillId,
     accessRoleId: AccessRoleIds.SKILL_VIEWER,
-    grantedBy: getSystemAuthorId(),
+    grantedBy: SYSTEM_AUTHOR_ID,
   });
 }
 
@@ -826,7 +837,7 @@ async function prepareRemoteSkill(params: {
     ref: source.ref,
     skillPath: discovered.rootPath,
     commitSha,
-    skillBlobSha: discovered.skillMd.id,
+    skillBlobSha: discovered.skillMd.sha,
     syncedAt: serializeDate(syncedAt),
     syncStatus: 'synced',
   };
@@ -872,7 +883,7 @@ async function commitRemoteSkill(
       update: prepared.update,
     });
     if (result.status === 'updated') {
-      return { skill: result.skill, created: false, warnings: result.warnings };
+      return { skill: result.skill, created: false };
     }
     if (result.status === 'conflict') {
       throw new SkillSyncError(
@@ -886,7 +897,7 @@ async function commitRemoteSkill(
     );
   }
   const created = await deps.createSkill(prepared.createInput);
-  return { skill: created.skill, created: true, warnings: created.warnings };
+  return { skill: created.skill, created: true };
 }
 
 /**
@@ -909,10 +920,7 @@ function hasExternalSkillEdit(before: ISkill, after: ISkill): boolean {
 async function commitExistingRemoteSkillAfterFileSync(
   deps: GitHubSkillSyncDeps,
   prepared: PreparedExistingRemoteSkill,
-  options: {
-    forceCommit?: boolean;
-    logSkillWarnings: (name: string, warnings: ValidationIssue[] | undefined) => void;
-  },
+  options: { forceCommit?: boolean } = {},
 ): Promise<UpsertRemoteSkillResult> {
   const refreshed = await deps.getSkillById(prepared.existing._id);
   if (!refreshed) {
@@ -930,9 +938,7 @@ async function commitExistingRemoteSkillAfterFileSync(
   if (!options.forceCommit && !hasRemoteSkillDefinitionChanged(prepared.update, refreshed)) {
     return { skill: refreshed, created: false };
   }
-  const result = await commitRemoteSkill(deps, { ...prepared, existing: refreshed });
-  options.logSkillWarnings(result.skill.name, result.warnings);
-  return result;
+  return commitRemoteSkill(deps, { ...prepared, existing: refreshed });
 }
 
 async function cleanupFile(deps: GitHubSkillSyncDeps, file: StoredSkillFileRef): Promise<void> {
@@ -1021,23 +1027,17 @@ async function cleanupStoredFiles(params: {
   deps: GitHubSkillSyncDeps;
   files: StoredSkillFileRef[];
   logMessage: string;
-  throwOnError?: boolean;
 }): Promise<void> {
   const seen = new Set<string>();
-  const cleanupErrors: unknown[] = [];
   for (const file of params.files) {
     const key = getStoredFileKey(file);
     if (seen.has(key)) {
       continue;
     }
     seen.add(key);
-    await cleanupFile(params.deps, file).catch((cleanupError) => {
-      cleanupErrors.push(cleanupError);
-      logger.error(params.logMessage, cleanupError);
-    });
-  }
-  if (params.throwOnError && cleanupErrors.length > 0) {
-    throw cleanupErrors[0];
+    await cleanupFile(params.deps, file).catch((cleanupError) =>
+      logger.error(params.logMessage, cleanupError),
+    );
   }
 }
 
@@ -1064,7 +1064,6 @@ async function restoreExistingSkillFiles(params: {
     deps,
     files: savedFiles,
     logMessage: '[GitHubSkillSync] Failed to clean up rolled-back synced file:',
-    throwOnError: true,
   });
 }
 
@@ -1073,20 +1072,7 @@ async function deleteSyncedSkillForRestore(
   skill: ISkill & { _id: Types.ObjectId },
 ): Promise<{ deletedFileCount: number; deletedSkill: DeletedSyncedSkillJournal }> {
   const files = await deps.listSkillFiles(skill._id);
-  const deletion = await deps.deleteSkill(skill._id.toString());
-  if (!deletion.cleanupComplete) {
-    if (!deletion.failedCleanupSteps.includes('skill_files')) {
-      await cleanupStoredFiles({
-        deps,
-        files: files.map(toStoredFileRefFromSkillFile),
-        logMessage: '[GitHubSkillSync] Failed to clean up partially deleted stale skill file:',
-        throwOnError: true,
-      });
-    }
-    throw new Error(
-      `Skill cleanup did not finish: ${deletion.failedCleanupSteps.join(', ') || 'unknown step'}`,
-    );
-  }
+  await deps.deleteSkill(skill._id.toString());
   return {
     deletedFileCount: files.length,
     deletedSkill: { skill, files },
@@ -1212,51 +1198,26 @@ function getMirrorNameKey(params: {
   return `${params.tenantId ?? ''}:${params.author}:${params.name ?? ''}`;
 }
 
-/**
- * Two upstream skills claiming one mirror name have no non-arbitrary winner, so
- * every member of the colliding group is dropped rather than letting tree order
- * decide which one the mirror ends up holding. Skills with unique names are
- * unaffected: one bad pair no longer costs the rest of the repository.
- */
-function partitionDuplicatePreparedSkillNames(
+function assertNoDuplicatePreparedSkillNames(
   source: SkillSyncGitHubSourceConfig,
   preparedSkills: PreparedDiscoveredSkill[],
-): { unique: PreparedDiscoveredSkill[]; duplicates: PreparedDiscoveredSkill[] } {
+): void {
   const sourceTenantId = source.tenantId ?? undefined;
-  const groups = new Map<string, PreparedDiscoveredSkill[]>();
-  for (const entry of preparedSkills) {
+  const seen = new Map<string, string>();
+  for (const { discovered, prepared } of preparedSkills) {
     const key = getMirrorNameKey({
       tenantId: sourceTenantId,
-      author: entry.prepared.createInput.author.toString(),
-      name: entry.prepared.createInput.name,
+      author: prepared.createInput.author.toString(),
+      name: prepared.createInput.name,
     });
-    const group = groups.get(key);
-    if (group) {
-      group.push(entry);
-      continue;
+    if (seen.has(key)) {
+      throw new SkillSyncError(
+        'DUPLICATE_SKILL_NAME',
+        `GitHub source "${source.id}" contains multiple skills named "${prepared.createInput.name}"`,
+      );
     }
-    groups.set(key, [entry]);
+    seen.set(key, discovered.rootPath);
   }
-  const unique: PreparedDiscoveredSkill[] = [];
-  const duplicates: PreparedDiscoveredSkill[] = [];
-  for (const group of groups.values()) {
-    if (group.length === 1) {
-      unique.push(group[0]);
-      continue;
-    }
-    duplicates.push(...group);
-  }
-  return { unique, duplicates };
-}
-
-function makeDuplicateNameError(
-  source: SkillSyncGitHubSourceConfig,
-  name: string | undefined,
-): SkillSyncError {
-  return new SkillSyncError(
-    'DUPLICATE_SKILL_NAME',
-    `GitHub source "${source.id}" contains multiple skills named "${name}"`,
-  );
 }
 
 async function deleteNameConflictingStaleSkill(params: {
@@ -1290,11 +1251,7 @@ async function deleteNameConflictingStaleSkill(params: {
   const { deletedFileCount, deletedSkill } = await deleteSyncedSkillForRestore(
     params.deps,
     staleSkill,
-  ).catch((error) => {
-    /* deleteSkill can remove the skill row before a later file deletion fails.
-       The caller has no complete journal to restore from in that case. */
-    throw makeStaleDeletionFailure(error);
-  });
+  );
   const staleSkillId = staleSkill._id.toString();
 
   return {
@@ -1309,15 +1266,16 @@ async function deleteNameConflictingStaleSkill(params: {
 
 async function syncSkillFiles(params: {
   deps: GitHubSkillSyncDeps;
-  adapter: GitRepoAdapter;
-  commit: RepoCommit;
+  token: string;
   source: SkillSyncGitHubSourceConfig;
   skill: ISkill & { _id: Types.ObjectId };
   discovered: DiscoveredSkill;
+  commitSha: string;
+  fetchFn: FetchFn;
   assertNotCancelled: AssertNotCancelled;
   journal?: SyncSkillFilesJournal;
 }): Promise<SyncSkillFilesResult> {
-  const { deps, adapter, commit, source, skill, discovered, assertNotCancelled } = params;
+  const { deps, token, source, skill, discovered, commitSha, fetchFn, assertNotCancelled } = params;
   const journal = params.journal ?? { staleFiles: [], savedFiles: [] };
   const remotePaths = new Set<string>();
   let syncedFileCount = 0;
@@ -1334,10 +1292,10 @@ async function syncSkillFiles(params: {
     assertCumulativeGitHubFileSize(totalFileBytes);
     remotePaths.add(relativePath);
     const existing = await deps.getSkillFileByPath(skill._id, relativePath);
-    if (existing && getSourceMetadataString(existing, 'blobSha') === entry.id) {
+    if (existing && getSourceMetadataString(existing, 'blobSha') === entry.sha) {
       continue;
     }
-    const buffer = await adapter.fetchFileContent(commit, entry);
+    const buffer = await fetchBlob({ fetchFn, token, source, sha: entry.sha });
     assertNotCancelled();
     assertGitHubBufferSize(buffer, relativePath);
     const fileId = crypto.randomUUID();
@@ -1366,8 +1324,8 @@ async function syncSkillFiles(params: {
           provider: PROVIDER,
           sourceId: source.id,
           upstreamId: makeUpstreamId(source, discovered.rootPath),
-          commitSha: commit.id,
-          blobSha: entry.id,
+          commitSha,
+          blobSha: entry.sha,
           path: entry.path,
         },
         mimeType,
@@ -1377,10 +1335,9 @@ async function syncSkillFiles(params: {
         tenantId: skill.tenantId,
       });
     } catch (error) {
-      await cleanupFile(deps, savedFile).catch((cleanupError) => {
-        logger.error('[GitHubSkillSync] Failed to clean up orphaned synced file:', cleanupError);
-        throw makeRollbackFailure(error);
-      });
+      await cleanupFile(deps, savedFile).catch((cleanupError) =>
+        logger.error('[GitHubSkillSync] Failed to clean up orphaned synced file:', cleanupError),
+      );
       throw error;
     }
     syncedFileCount++;
@@ -1410,26 +1367,14 @@ async function deleteSyncedSkill(
   skill: ISkill & { _id: Types.ObjectId },
 ): Promise<number> {
   const files = await deps.listSkillFiles(skill._id);
-  const deletion = await deps.deleteSkill(skill._id.toString());
   let deletedFiles = 0;
-  const cleanupErrors: unknown[] = [];
-  if (!deletion.failedCleanupSteps.includes('skill_files')) {
-    for (const file of files) {
-      await cleanupFile(deps, file).catch((cleanupError) => {
-        cleanupErrors.push(cleanupError);
-        logger.error('[GitHubSkillSync] Failed to clean up mirrored skill file:', cleanupError);
-      });
-      deletedFiles++;
-    }
-  }
-  if (!deletion.cleanupComplete) {
-    throw new Error(
-      `Skill cleanup did not finish: ${deletion.failedCleanupSteps.join(', ') || 'unknown step'}`,
+  for (const file of files) {
+    await cleanupFile(deps, file).catch((cleanupError) =>
+      logger.error('[GitHubSkillSync] Failed to clean up mirrored skill file:', cleanupError),
     );
+    deletedFiles++;
   }
-  if (cleanupErrors.length > 0) {
-    throw cleanupErrors[0];
-  }
+  await deps.deleteSkill(skill._id.toString());
   return deletedFiles;
 }
 
@@ -1476,18 +1421,7 @@ async function syncSource(params: {
   assertNotCancelled: AssertNotCancelled;
 }): Promise<ISkillSyncStatus> {
   const { deps, source, fetchFn, assertNotCancelled } = params;
-  const createAdapter = deps.createAdapter ?? createGitHubRepoAdapter;
   const startedAt = new Date();
-  const counts: SyncCounters = {
-    syncedSkillCount: 0,
-    syncedFileCount: 0,
-    deletedSkillCount: 0,
-    deletedFileCount: 0,
-    skippedSkillCount: 0,
-    skippedFileCount: 0,
-  };
-  const skippedSkills: ISkillSyncSkippedSkill[] = [];
-  const skippedFiles: ISkillSyncSkippedFile[] = [];
   await deps.upsertStatus(makeStatusInput({ source, status: 'running', startedAt }));
   try {
     assertNotCancelled();
@@ -1500,13 +1434,13 @@ async function syncSource(params: {
         getMissingCredentialMessage(source, allowServerCredentials),
       );
     }
-    const adapter = createAdapter({ source, token, fetchFn });
-    const commit = await adapter.resolveCommit();
+    const commit = await fetchCommit({ fetchFn, token, source });
     assertNotCancelled();
     const treeEntries = await fetchConfiguredTreeEntries({
-      adapter,
-      commit,
+      fetchFn,
+      token,
       source,
+      rootTreeSha: commit.commit.tree.sha,
       assertNotCancelled,
     });
     assertConfiguredPathsExist(treeEntries, source);
@@ -1522,212 +1456,63 @@ async function syncSource(params: {
       }
       return existingSyncedSkills;
     };
-    let loggedPerSkillWarningCount = 0;
-    let suppressedSkippedWarningCount = 0;
-    let suppressedValidationWarningCount = 0;
-    /**
-     * Non-blocking validation issues have no user-facing surface on a background
-     * sync. Keep them visible without allowing a large source to amplify logs.
-     */
-    const logSkillWarnings = (name: string, warnings: ValidationIssue[] | undefined): void => {
-      if (!warnings?.length) {
-        return;
-      }
-      if (loggedPerSkillWarningCount >= MAX_LOGGED_PER_SKILL_WARNINGS) {
-        suppressedValidationWarningCount++;
-        return;
-      }
-      const summary = summarizeValidationIssues(warnings);
-      if (!summary) {
-        return;
-      }
-      logger.warn(
-        `[GitHubSkillSync] Skill "${truncateSkipName(name)}" synced with warnings: ${truncateSkipMessage(summary)}`,
-      );
-      loggedPerSkillWarningCount++;
-    };
-    const logSuppressedPerSkillWarningSummaries = (): void => {
-      if (suppressedSkippedWarningCount > 0) {
-        logger.warn(
-          `[GitHubSkillSync] Source "${source.id}" suppressed ${suppressedSkippedWarningCount} additional skipped skill warning(s)`,
-        );
-      }
-      if (suppressedValidationWarningCount > 0) {
-        logger.warn(
-          `[GitHubSkillSync] Source "${source.id}" suppressed ${suppressedValidationWarningCount} additional synced skill validation warning(s)`,
-        );
-      }
-    };
-    /**
-     * Charges one skill's failure to that skill and lets the run continue.
-     * Source-level failures are rethrown so the whole source still fails fast
-     * instead of being reported as a long list of skipped skills.
-     */
-    const recordSkippedSkill = ({
-      path,
-      name,
-      error,
-    }: {
-      path: string;
-      name?: string;
-      error: unknown;
-    }): void => {
-      if (isSourceFatalError(error)) {
-        throw error;
-      }
-      const sanitized = sanitizeError(error);
-      counts.skippedSkillCount++;
-      if (loggedPerSkillWarningCount < MAX_LOGGED_PER_SKILL_WARNINGS) {
-        logger.warn(
-          `[GitHubSkillSync] Source "${source.id}" skipped "${truncateSkipPath(path)}": ${truncateSkipMessage(sanitized.message)}`,
-        );
-        loggedPerSkillWarningCount++;
-      } else {
-        suppressedSkippedWarningCount++;
-      }
-      if (skippedSkills.length >= MAX_RECORDED_SKIPPED_SKILLS) {
-        return;
-      }
-      skippedSkills.push({
-        path: truncateSkipPath(path),
-        name: truncateSkipName(name),
-        errorCode: sanitized.code,
-        errorMessage: truncateSkipMessage(sanitized.message),
-      });
+    const counts: SyncCounters = {
+      syncedSkillCount: 0,
+      syncedFileCount: 0,
+      deletedSkillCount: 0,
+      deletedFileCount: 0,
     };
     const syncedAt = new Date();
     const preparedSkills: PreparedDiscoveredSkill[] = [];
-    let canReconcileStaleSkills = true;
-    /* Built from everything discovered upstream, not just what prepared
-       cleanly: a skill that failed to prepare is still present in the
-       repository, so it must not look stale or like a rename target. */
-    const discoveredUpstreamIds = new Set(
-      discoveredSkills.map((discovered) => makeUpstreamId(source, discovered.rootPath)),
-    );
 
     for (const discovered of discoveredSkills) {
       assertNotCancelled();
-      try {
-        assertGitHubSkillPackageManifest(discovered);
-        const skillMdPath = getSkillMdPath(discovered);
-        const skillMdBuffer = await adapter.fetchFileContent(commit, discovered.skillMd);
-        assertNotCancelled();
-        assertGitHubBufferSize(skillMdBuffer, skillMdPath);
-        const prepared = await prepareRemoteSkill({
-          deps,
-          source,
-          discovered,
-          skillMdContent: skillMdBuffer.toString('utf-8'),
-          commitSha: commit.id,
-          syncedAt,
-        });
-        preparedSkills.push({ discovered, prepared });
-      } catch (error) {
-        /* Until preparation succeeds, a moved skill cannot be matched to the
-           mirror that still carries its old upstream id. Keep stale mirrors
-           for this run rather than deleting a last-known-good moved skill. */
-        canReconcileStaleSkills = false;
-        seenUpstreamIds.add(makeUpstreamId(source, discovered.rootPath));
-        recordSkippedSkill({ path: discovered.rootPath, error });
-      }
-    }
-
-    /**
-     * A moved skill's mirror still carries its old upstream id until the update
-     * lands, and only the new path is marked as seen. Marking the old id keeps
-     * the published copy in place whenever the new one does not replace it, so
-     * the reconcile pass cannot read it as stale.
-     */
-    const markMovedMirrorAsSeen = async (
-      prepared: PreparedRemoteSkill,
-    ): Promise<(ISkill & { _id: Types.ObjectId }) | null> => {
-      if (prepared.existing || !canReconcileStaleSkills) {
-        return null;
-      }
-      const movedExisting = findMovedSourceSkill({
+      assertGitHubSkillPackageManifest(discovered);
+      const skillMdPath = getSkillMdPath(discovered);
+      const skillMdBuffer = await fetchBlob({
+        fetchFn,
+        token,
         source,
-        prepared,
-        existingSyncedSkills: await getExistingSyncedSkills(),
-        excludedUpstreamIds: discoveredUpstreamIds,
+        sha: discovered.skillMd.sha,
       });
-      const movedUpstreamId = movedExisting
-        ? getSourceMetadataString(movedExisting, 'upstreamId')
-        : undefined;
-      if (movedUpstreamId) {
-        seenUpstreamIds.add(movedUpstreamId);
-      }
-      return movedExisting;
-    };
-
-    const { unique, duplicates } = partitionDuplicatePreparedSkillNames(source, preparedSkills);
-    for (const { discovered, prepared } of duplicates) {
-      seenUpstreamIds.add(makeUpstreamId(source, discovered.rootPath));
-      /* A duplicate never reaches `syncPreparedSkill`, so without this its
-         moved mirror goes unmarked and is reconciled away even though nothing
-         was published to replace it. */
-      const movedMirror = await markMovedMirrorAsSeen(prepared);
-      if (!prepared.existing && !movedMirror) {
-        /* A duplicate with a new identity can be a moved and renamed skill.
-           Without an identity or name match, preserve unmatched stale mirrors
-           because one may be its last-known-good copy. */
-        canReconcileStaleSkills = false;
-      }
-      recordSkippedSkill({
-        path: discovered.rootPath,
-        name: prepared.createInput.name,
-        error: makeDuplicateNameError(source, prepared.createInput.name),
+      assertNotCancelled();
+      assertGitHubBufferSize(skillMdBuffer, skillMdPath);
+      const prepared = await prepareRemoteSkill({
+        deps,
+        source,
+        discovered,
+        skillMdContent: skillMdBuffer.toString('utf-8'),
+        commitSha: commit.sha,
+        syncedAt,
       });
+      preparedSkills.push({ discovered, prepared });
     }
+
+    const discoveredUpstreamIds = new Set(
+      preparedSkills.map(({ discovered }) => makeUpstreamId(source, discovered.rootPath)),
+    );
+    assertNoDuplicatePreparedSkillNames(source, preparedSkills);
     const orderedPreparedSkills = orderPreparedSkillsForSafeStaleDeletes({
       source,
-      preparedSkills: unique,
+      preparedSkills,
       existingSyncedSkills: await getExistingSyncedSkills(),
       discoveredUpstreamIds,
     });
 
-    /**
-     * Only a live skill's dropped files are worth reporting. A skill that was
-     * skipped outright is already accounted for in `skippedSkills`, so charging
-     * its files here would both misdescribe it as published-but-incomplete and
-     * let it crowd genuinely invisible drops out of the recorded sample.
-     */
-    const recordUnsupportedFiles = (discovered: DiscoveredSkill): void => {
-      for (const unsupportedPath of discovered.unsupportedFiles) {
-        counts.skippedFileCount++;
-        if (skippedFiles.length >= MAX_RECORDED_SKIPPED_FILES) {
-          continue;
-        }
-        skippedFiles.push({
-          path: truncateSkipPath(unsupportedPath),
-          skillPath: truncateSkipPath(discovered.rootPath),
-          errorCode: UNSUPPORTED_FILE_PATH_CODE,
-          errorMessage: UNSUPPORTED_FILE_PATH_MESSAGE,
-        });
-      }
-    };
-
-    const syncPreparedSkill = async ({
-      discovered,
-      prepared,
-    }: PreparedDiscoveredSkill): Promise<void> => {
-      if (!prepared.existing && !canReconcileStaleSkills) {
-        const ambiguousMovedMirror = findMovedSourceSkill({
-          source,
-          prepared,
-          existingSyncedSkills: await getExistingSyncedSkills(),
-          excludedUpstreamIds: discoveredUpstreamIds,
-        });
-        if (ambiguousMovedMirror) {
-          throw new SkillSyncError(
-            'SKILL_MOVE_AMBIGUOUS',
-            `Skill "${prepared.createInput.name}" may have moved, but another skill could not be prepared`,
-          );
-        }
-      }
-      const movedExisting = await markMovedMirrorAsSeen(prepared);
+    for (const { discovered, prepared } of orderedPreparedSkills) {
+      assertNotCancelled();
+      const movedExisting = prepared.existing
+        ? null
+        : findMovedSourceSkill({
+            source,
+            prepared,
+            existingSyncedSkills: await getExistingSyncedSkills(),
+            excludedUpstreamIds: discoveredUpstreamIds,
+          });
       const effectivePrepared: PreparedRemoteSkill = movedExisting
         ? { ...prepared, existing: movedExisting }
         : prepared;
+      seenUpstreamIds.add(makeUpstreamId(source, discovered.rootPath));
       if (effectivePrepared.existing) {
         // Check for an external edit before mutating files, so a concurrently
         // edited skill fails fast without leaving its bundled files partially
@@ -1756,15 +1541,16 @@ async function syncSource(params: {
         try {
           fileCounts = await syncSkillFiles({
             deps,
-            adapter,
-            commit,
+            token,
             source,
             skill: effectivePrepared.existing,
             discovered,
+            commitSha: commit.sha,
+            fetchFn,
             assertNotCancelled,
             journal,
           });
-          if (prepared.existing && canReconcileStaleSkills) {
+          if (prepared.existing) {
             staleConflictCleanup = await deleteNameConflictingStaleSkill({
               deps,
               source,
@@ -1783,41 +1569,30 @@ async function syncSource(params: {
               ...effectivePrepared,
               existing: effectivePrepared.existing,
             },
-            {
-              forceCommit: fileCounts.syncedFileCount > 0 || fileCounts.deletedFileCount > 0,
-              logSkillWarnings,
-            },
+            { forceCommit: fileCounts.syncedFileCount > 0 || fileCounts.deletedFileCount > 0 },
           );
         } catch (error) {
-          let rollbackFailed = false;
           await restoreExistingSkillFiles({
             deps,
             skill: effectivePrepared.existing,
             previousFiles,
             savedFiles: journal.savedFiles,
-          }).catch((cleanupError) => {
-            rollbackFailed = true;
+          }).catch((cleanupError) =>
             logger.error(
               '[GitHubSkillSync] Failed to restore existing skill files after sync failure:',
               cleanupError,
-            );
-          });
+            ),
+          );
           if (staleConflictCleanup?.deletedSkill) {
             await restoreDeletedSyncedSkill(deps, staleConflictCleanup.deletedSkill).catch(
-              (cleanupError) => {
+              (cleanupError) =>
                 logger.error(
-                  '[GitHubSkillSync] Failed to recreate stale mirrored skill after sync failure:',
+                  '[GitHubSkillSync] Failed to restore stale mirrored skill after sync failure:',
                   cleanupError,
-                );
-              },
+                ),
             );
-            /* deleteSkill removes the original id from agent allowlists and
-               deletes every ACL entry. Recreating the row recovers its data,
-               but cannot restore that dependent state, so this is never a
-               complete rollback and the source must fail visibly. */
-            rollbackFailed = true;
           }
-          throw rollbackFailed ? makeRollbackFailure(error) : error;
+          throw error;
         }
         await cleanupStoredFiles({
           deps,
@@ -1830,8 +1605,7 @@ async function syncSource(params: {
         counts.syncedSkillCount++;
         counts.syncedFileCount += fileCounts.syncedFileCount;
         counts.deletedFileCount += fileCounts.deletedFileCount;
-        recordUnsupportedFiles(discovered);
-        return;
+        continue;
       }
 
       const upserted = await commitRemoteSkill(deps, effectivePrepared);
@@ -1839,62 +1613,26 @@ async function syncSource(params: {
       try {
         const fileCounts = await syncSkillFiles({
           deps,
-          adapter,
-          commit,
+          token,
           source,
           skill,
           discovered,
+          commitSha: commit.sha,
+          fetchFn,
           assertNotCancelled,
         });
         await ensurePublicViewer(deps, skill._id);
-        logSkillWarnings(skill.name, upserted.warnings);
         counts.syncedSkillCount++;
         counts.syncedFileCount += fileCounts.syncedFileCount;
         counts.deletedFileCount += fileCounts.deletedFileCount;
-        recordUnsupportedFiles(discovered);
       } catch (error) {
-        const rolledBack = await deleteSyncedSkill(deps, skill)
-          .then(() => true)
-          .catch((cleanupError) => {
-            logger.error(
-              '[GitHubSkillSync] Failed to roll back partially synced skill:',
-              cleanupError,
-            );
-            return false;
-          });
-        throw rolledBack ? error : makeRollbackFailure(error);
-      }
-    };
-
-    for (const entry of orderedPreparedSkills) {
-      assertNotCancelled();
-      /* Marked as seen before the attempt: a skill that fails here is still
-         present upstream, so the reconcile pass below must not mirror-delete
-         a copy that a later run can repair. */
-      seenUpstreamIds.add(makeUpstreamId(source, entry.discovered.rootPath));
-      try {
-        await syncPreparedSkill(entry);
-      } catch (error) {
-        if (
-          !entry.prepared.existing &&
-          !findMovedSourceSkill({
-            source,
-            prepared: entry.prepared,
-            existingSyncedSkills: await getExistingSyncedSkills(),
-            excludedUpstreamIds: discoveredUpstreamIds,
-          })
-        ) {
-          /* A new identity can be a moved and renamed skill that name-based
-             matching cannot associate with its old mirror. If it fails after
-             preparation, preserve stale mirrors because the old upstream id
-             is unknown and may be the last-known-good copy. */
-          canReconcileStaleSkills = false;
-        }
-        recordSkippedSkill({
-          path: entry.discovered.rootPath,
-          name: entry.prepared.createInput.name,
-          error,
-        });
+        await deleteSyncedSkill(deps, skill).catch((cleanupError) =>
+          logger.error(
+            '[GitHubSkillSync] Failed to roll back partially synced skill:',
+            cleanupError,
+          ),
+        );
+        throw error;
       }
     }
 
@@ -1917,48 +1655,20 @@ async function syncSource(params: {
         skill.sourceMetadata && typeof skill.sourceMetadata.upstreamId === 'string'
           ? skill.sourceMetadata.upstreamId
           : '';
-      if (!canReconcileStaleSkills || seenUpstreamIds.has(upstreamId)) {
+      if (seenUpstreamIds.has(upstreamId)) {
         continue;
       }
       counts.deletedFileCount += await deleteSyncedSkill(deps, skill);
       counts.deletedSkillCount++;
     }
 
-    if (counts.skippedSkillCount === 0 && counts.skippedFileCount === 0) {
-      logSuppressedPerSkillWarningSummaries();
-      return deps.upsertStatus(
-        makeStatusInput({
-          source,
-          status: 'succeeded',
-          startedAt,
-          finishedAt: new Date(),
-          counts,
-        }),
-      );
-    }
-    /* Nothing published and something skipped means the source produced no
-       usable mirror at all, which is a failure however it is spelled. The
-       first skip carries the reason so the status is actionable. */
-    /* Only dropped *skills* can make a run a failure. A run that published
-       every skill it found is still a real mirror, even if some file inside
-       one of them could not come along. */
-    const publishedNothing = counts.syncedSkillCount === 0 && counts.skippedSkillCount > 0;
-    const firstSkip = skippedSkills[0];
-    logSuppressedPerSkillWarningSummaries();
-    logger.warn(
-      `[GitHubSkillSync] Source "${source.id}" synced ${counts.syncedSkillCount} skill(s), skipped ${counts.skippedSkillCount} skill(s) and ${counts.skippedFileCount} file(s)`,
-    );
     return deps.upsertStatus(
       makeStatusInput({
         source,
-        status: publishedNothing ? 'failed' : 'partial',
+        status: 'succeeded',
         startedAt,
         finishedAt: new Date(),
         counts,
-        skippedSkills,
-        skippedFiles: skippedFiles.length > 0 ? skippedFiles : undefined,
-        errorCode: publishedNothing ? firstSkip?.errorCode : undefined,
-        errorMessage: publishedNothing ? firstSkip?.errorMessage : undefined,
       }),
     );
   } catch (error) {
@@ -1970,16 +1680,6 @@ async function syncSource(params: {
         status: 'failed',
         startedAt,
         finishedAt: new Date(),
-        counts: {
-          syncedSkillCount: 0,
-          syncedFileCount: 0,
-          deletedSkillCount: 0,
-          deletedFileCount: 0,
-          skippedSkillCount: counts.skippedSkillCount,
-          skippedFileCount: counts.skippedFileCount,
-        },
-        skippedSkills: skippedSkills.length > 0 ? skippedSkills : undefined,
-        skippedFiles: skippedFiles.length > 0 ? skippedFiles : undefined,
         errorCode: sanitized.code,
         errorMessage: sanitized.message,
       }),
@@ -2074,10 +1774,6 @@ export function createGitHubSkillSyncRunner(deps: GitHubSkillSyncDeps): GitHubSk
         syncedFileCount: stored?.syncedFileCount ?? 0,
         deletedSkillCount: stored?.deletedSkillCount ?? 0,
         deletedFileCount: stored?.deletedFileCount ?? 0,
-        skippedSkillCount: stored?.skippedSkillCount ?? 0,
-        skippedSkills: stored?.skippedSkills,
-        skippedFileCount: stored?.skippedFileCount ?? 0,
-        skippedFiles: stored?.skippedFiles,
         createdAt: stored?.createdAt,
         updatedAt: stored?.updatedAt,
       } satisfies ISkillSyncStatus & { credentialPresent: boolean };

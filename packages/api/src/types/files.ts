@@ -1,16 +1,15 @@
 import type { BedrockDocumentFormat } from 'librechat-data-provider';
 import type { IMongoFile } from '@librechat/data-schemas';
 import type { Readable } from 'stream';
-import type { DownloadURLParams } from '~/storage/types';
 import type { ServerRequest } from './http';
+import type { DownloadURLParams } from '~/storage/types';
 export interface STTService {
   getInstance(): Promise<STTService>;
-  getProviderSchema(req: ServerRequest): Promise<[string, object, string[] | undefined]>;
+  getProviderSchema(req: ServerRequest): Promise<[string, object]>;
   sttRequest(
     provider: string,
     schema: object,
     params: { audioBuffer: Buffer; audioFile: AudioFileInfo },
-    allowedAddresses?: string[],
   ): Promise<string>;
 }
 
@@ -39,7 +38,7 @@ export interface GoogleVideoBlock {
   data: string;
 }
 
-/** OpenAI-compatible video block format (OpenRouter, vLLM, configured custom endpoints) */
+/** OpenRouter video block format */
 export interface OpenRouterVideoBlock {
   type: 'video_url';
   video_url: {
@@ -91,12 +90,6 @@ export interface OpenAIFileBlock {
   };
 }
 
-/** OpenAI-compatible text part carrying a textual document's decoded contents */
-export interface OpenAITextDocumentBlock {
-  type: 'text';
-  text: string;
-}
-
 /** OpenAI Responses API file format */
 export interface OpenAIInputFileBlock {
   type: 'input_file';
@@ -120,7 +113,6 @@ export type DocumentBlock =
   | AnthropicDocumentBlock
   | GoogleDocumentBlock
   | OpenAIFileBlock
-  | OpenAITextDocumentBlock
   | OpenAIInputFileBlock
   | BedrockDocumentBlock;
 
@@ -143,7 +135,7 @@ export interface GoogleAudioBlock {
   data: string;
 }
 
-/** OpenAI-compatible audio block format (OpenRouter, vLLM, configured custom endpoints) */
+/** OpenRouter audio block format */
 export interface OpenRouterAudioBlock {
   type: 'input_audio';
   input_audio: {
@@ -166,8 +158,8 @@ export interface AudioResult {
   }>;
 }
 
-export interface ProcessedFile<T = IMongoFile> {
-  file: T;
+export interface ProcessedFile {
+  file: IMongoFile;
   content: string;
   metadata: {
     file_id: string;

@@ -1,17 +1,12 @@
 import { logger } from '@librechat/data-schemas';
+import { isEphemeralAgentId } from 'librechat-data-provider';
 import { HumanMessage } from '@librechat/agents/langchain/messages';
-import { SkillsScope, isEphemeralAgentId, resolveAgentSkillsScope } from 'librechat-data-provider';
 import { formatSkillCatalog, SkillToolDefinition, ReadFileToolDefinition } from '@librechat/agents';
-import type {
-  Agent,
-  CodeWorkspaceOperation,
-  CodeWorkspaceDescriptor,
-} from 'librechat-data-provider';
 import type { LCToolRegistry, LCTool, InjectedMessage } from '@librechat/agents';
 import type { BaseMessage } from '@librechat/agents/langchain/messages';
+import type { Agent } from 'librechat-data-provider';
 import type { Types } from 'mongoose';
-import { getSkillToolDefinition, isSkillToolAvailable, registerCodeExecutionTools } from './tools';
-import { createSkillContentDigest } from './compatibility';
+import { registerCodeExecutionTools } from './tools';
 import { logAxiosError } from '~/utils';
 
 /**
@@ -35,11 +30,7 @@ export type TGetSkillByName = (
   _id: Types.ObjectId;
   name: string;
   body: string;
-  /** Monotonic Skill document version used by checkpoint context compatibility. */
-  version?: number;
   author: Types.ObjectId;
-  /** Structured SKILL.md metadata retained for model-bound policy checks. */
-  frontmatter?: Record<string, unknown>;
   /**
    * Skill-declared tool allowlist, forwarded verbatim from the skill doc.
    * Surfaced so the resolver can carry it onto `ResolvedManualSkill` for
@@ -98,15 +89,6 @@ const MIN_SKILL_CATALOG_LIMIT = 1;
 const MAX_CATALOG_PAGES = 10;
 /** Page size used when paginating to fill the active-skill quota. */
 const CATALOG_PAGE_SIZE = 100;
-/**
- * Per-entry description cap requested of `formatSkillCatalog`, mirroring the
- * SDK default. It is a ceiling, not a guarantee: `@librechat/agents` applies
- * it first, then truncates further — proportionally against its own context
- * budget, and finally to names-only — so a description well under this cap
- * can still be cut. Delivered length is measured from the emitted catalog
- * rather than assumed from this value.
- */
-const SKILL_CATALOG_MAX_ENTRY_CHARS = 250;
 /** Hard ceiling on skill names a model spec can request by config. */
 const MAX_MODEL_SPEC_SKILLS = SKILL_CATALOG_LIMIT;
 /**
@@ -155,11 +137,6 @@ export const MAX_SKILL_NAME_LENGTH = 200;
  * Keep the trailing slash — call sites concatenate `${SKILL_FILE_PREFIX}${skillName}/...`.
  */
 export const SKILL_FILE_PREFIX = 'skills/';
-
-/** Whether a model-facing file path is routed to persistent LibreChat skill storage. */
-export function isSkillFilePath(filePath: string): boolean {
-  return filePath.startsWith(SKILL_FILE_PREFIX);
-}
 
 /**
  * Marker tagged onto every skill-primed message (as `additional_kwargs.source`
@@ -296,13 +273,18 @@ export async function resolveModelSpecSkillIds({
         preferModelInvocable: true,
       });
       if (!skill) {
-        logger.warn('[resolveModelSpecSkillIds] Requested skill not found or not accessible');
+        logger.warn(
+          `[resolveModelSpecSkillIds] Skill "${name}" not found or not accessible for this user`,
+        );
         resolved.push(null);
         continue;
       }
       resolved.push(skill._id);
-    } catch {
-      logger.warn('[resolveModelSpecSkillIds] Failed to resolve a requested skill');
+    } catch (err) {
+      logger.warn(
+        `[resolveModelSpecSkillIds] Failed to resolve skill "${name}":`,
+        err instanceof Error ? err.message : err,
+      );
       resolved.push(null);
     }
   }
@@ -322,8 +304,8 @@ export async function resolveModelSpecSkillIds({
 }
 
 export interface ResolveAgentScopedSkillIdsParams {
-  /** Agent being initialized. Reads its persisted skill capability and catalog scope. */
-  agent: Pick<Agent, 'id' | 'skills' | 'skills_enabled' | 'skills_scope'>;
+  /** Agent being initialized. Reads `id`, `skills`, and `skills_enabled`. */
+  agent: Pick<Agent, 'id' | 'skills' | 'skills_enabled'>;
   /** Full set of skill IDs the user can VIEW (pre-scoped by ACL). */
   accessibleSkillIds: Types.ObjectId[];
   /** Admin capability: `AgentCapabilities.skills` on the agents endpoint. */
@@ -339,9 +321,9 @@ export interface ResolveAgentScopedSkillIdsParams {
  *    `true` = full accessible catalog, string list = scoped allowlist,
  *    empty list / `false` = no skills. Otherwise the skills badge toggle
  *    controls the full accessible catalog.
- *  - Persisted agent  → the builder's `skills_enabled` master switch and
- *    optional explicit `skills_scope`. Legacy agents without a scope retain
- *    enabled + empty = full catalog behavior.
+ *  - Persisted agent  → the builder's `skills_enabled` master switch.
+ *    Enabled + empty allowlist = full catalog; enabled + non-empty
+ *    allowlist = narrow to those ids; disabled (or undefined) = no skills.
  *
  * When not activated, returns `[]` so `injectSkillCatalog`,
  * `resolveManualSkills`, and `resolveAlwaysApplySkills` all no-op.
@@ -374,15 +356,8 @@ export function resolveAgentScopedSkillIds(
   if (agent.skills_enabled !== true) {
     return [];
   }
-  const scope = resolveAgentSkillsScope(agent.skills, agent.skills_enabled, agent.skills_scope);
-  if (scope === SkillsScope.none) {
-    return [];
-  }
-  if (scope === SkillsScope.all) {
-    return scopeSkillIds(accessibleSkillIds, undefined);
-  }
   if (!Array.isArray(agent.skills) || agent.skills.length === 0) {
-    return [];
+    return scopeSkillIds(accessibleSkillIds, undefined);
   }
   return scopeSkillIds(accessibleSkillIds, agent.skills);
 }
@@ -434,15 +409,6 @@ export interface InjectSkillCatalogParams {
   codeEnvAvailable?: boolean;
   /** When true, bash_tool registers with the hedged stateful-session description. */
   statefulSessions?: boolean;
-  /** When true, read_file exposes the attached worker's workspace namespace. */
-  workspaceTools?: boolean;
-  /** Live operation ceiling for the selected attached workspace. */
-  workspaceOperations?: ReadonlySet<CodeWorkspaceOperation>;
-  /** Deployment ceiling advertised on attached Bash tool definitions. */
-  workspaceCommandTimeoutMaxMs?: number;
-  workspaceEnvironment?: CodeWorkspaceDescriptor['environment'];
-  /** The worker runs `.worktrees/<name>` in its own lane; advertise `cwd` routing to the model. */
-  workspaceLinkedWorktrees?: boolean;
   /** Current user ID — used to determine skill ownership for active-state resolution. */
   userId?: string;
   /** Per-user skill overrides: `{ [skillId]: boolean }`. Missing entries use the default. */
@@ -450,34 +416,6 @@ export interface InjectSkillCatalogParams {
   /** Admin-configured default for shared skills. `true` = shared skills auto-activate. */
   defaultActiveOnShare?: boolean;
   /** Admin-configured cap on the model-visible catalog. Defaults to 100. */
-  maxCatalogSkills?: number;
-  /**
-   * When true, the model may author skills this run, so the `skill` tool
-   * registers even with an empty catalog and its guidance accepts a name the
-   * model creates mid-run. See `isSkillToolAvailable`.
-   */
-  skillAuthoringAvailable?: boolean;
-  /** Read-only catalog snapshot preloaded for current-policy inspection. */
-  resolvedCatalog?: ResolvedSkillCatalog;
-}
-
-export type SkillCatalogSummary = Awaited<
-  ReturnType<NonNullable<TListSkillsByAccess>>
->['skills'][number];
-
-export interface ResolvedSkillCatalog {
-  activeSkills: SkillCatalogSummary[];
-  catalogLimit: number;
-  visibleCount: number;
-  reachedEnd: boolean;
-}
-
-export interface ResolveSkillCatalogParams {
-  accessibleSkillIds: Types.ObjectId[];
-  listSkillsByAccess: TListSkillsByAccess | undefined;
-  userId?: string;
-  skillStates?: Record<string, boolean>;
-  defaultActiveOnShare?: boolean;
   maxCatalogSkills?: number;
 }
 
@@ -515,17 +453,28 @@ export interface InjectSkillCatalogResult {
 }
 
 /**
- * Loads the exact active catalog snapshot without mutating an agent or tool
- * registry. Callers may inspect this user-authored content before performing
- * provider/resource side effects, then pass the snapshot to
- * `injectSkillCatalog` to avoid a second query and TOCTOU drift.
+ * Queries accessible skills, formats a budget-aware catalog, appends it to the
+ * agent's additional_instructions, and registers the SkillTool definition.
+ * Returns updated toolDefinitions and the skill count.
+ *
+ * No tool instance is created — SkillTool is event-driven only. The tool
+ * definition in toolDefinitions is sufficient for the LLM to see and call it;
+ * the host handler intercepts the call via ON_TOOL_EXECUTE.
+ *
+ * The caller is responsible for gating on the skills capability before calling.
  */
-export async function resolveSkillCatalog(
-  params: ResolveSkillCatalogParams,
-): Promise<ResolvedSkillCatalog> {
+export async function injectSkillCatalog(
+  params: InjectSkillCatalogParams,
+): Promise<InjectSkillCatalogResult> {
   const {
+    agent,
+    toolDefinitions: inputDefs,
+    toolRegistry,
     accessibleSkillIds,
+    contextWindowTokens,
     listSkillsByAccess,
+    codeEnvAvailable,
+    statefulSessions,
     userId,
     skillStates,
     defaultActiveOnShare = false,
@@ -535,17 +484,20 @@ export async function resolveSkillCatalog(
 
   if (!listSkillsByAccess || accessibleSkillIds.length === 0) {
     return {
-      activeSkills: [],
-      catalogLimit,
-      visibleCount: 0,
-      reachedEnd: true,
+      toolDefinitions: inputDefs,
+      skillCount: 0,
+      toolNames: [],
+      activeSkillIds: [],
+      activeSkillNames: new Set<string>(),
     };
   }
 
-  const isActive = (skill: SkillCatalogSummary): boolean =>
-    resolveSkillActive({ skill, skillStates, userId, defaultActiveOnShare });
+  type SkillSummary = Awaited<ReturnType<NonNullable<typeof listSkillsByAccess>>>['skills'][number];
 
-  const activeSkills: SkillCatalogSummary[] = [];
+  const isActive = (s: SkillSummary): boolean =>
+    resolveSkillActive({ skill: s, skillStates, userId, defaultActiveOnShare });
+
+  const activeSkills: SkillSummary[] = [];
   /**
    * Catalog cap counts only model-visible (non-`disable-model-invocation`)
    * skills. Counting against the merged active set would let a tenant
@@ -596,116 +548,7 @@ export async function resolveSkillCatalog(
     pages += 1;
   }
 
-  return {
-    activeSkills,
-    catalogLimit,
-    visibleCount,
-    reachedEnd,
-  };
-}
-
-/** Filler used to build the measurement probe; never reaches the model. */
-const CATALOG_PROBE_CHAR = 'x';
-
-/**
- * How much of each skill's description reaches the model, aligned to `skills`.
- *
- * Measured on a probe rather than on the real catalog. Every decision in
- * `formatSkillCatalog`'s truncation ladder reads description `.length` and
- * never description content, so formatting same-length filler reproduces the
- * real cuts exactly — while guaranteeing the output can be parsed, since
- * filler carries no newline and no entry marker and skill names are validated
- * to `^[a-z0-9][a-z0-9-]*$`.
- *
- * The real catalog cannot be measured: a description may contain newlines, so
- * an entry is not one line; duplicate names share a rendering; and truncation
- * can splice one entry's tail onto the next, so even a whole-entry match can
- * be satisfied by text the model never received as that entry.
- */
-function measureCatalogDescriptions(
-  skills: Array<{ name: string; description: string }>,
-  options: Parameters<typeof formatSkillCatalog>[1],
-): number[] {
-  const probe = formatSkillCatalog(
-    skills.map((s) => ({
-      name: s.name,
-      description: CATALOG_PROBE_CHAR.repeat(s.description.length),
-    })),
-    options,
-  );
-  const delivered = new Array<number>(skills.length).fill(0);
-  let index = 0;
-  for (const line of probe.split('\n')) {
-    if (index >= skills.length) {
-      break;
-    }
-    const prefix = `- ${skills[index].name}`;
-    if (line === prefix) {
-      index++;
-      continue;
-    }
-    if (line.startsWith(`${prefix}: `)) {
-      delivered[index] = line.length - prefix.length - 2;
-      index++;
-    }
-  }
-  return delivered;
-}
-
-/**
- * Queries accessible skills, formats a budget-aware catalog, appends it to the
- * agent's additional_instructions, and registers the SkillTool definition.
- * Returns updated toolDefinitions and the skill count.
- *
- * No tool instance is created — SkillTool is event-driven only. The tool
- * definition in toolDefinitions is sufficient for the LLM to see and call it;
- * the host handler intercepts the call via ON_TOOL_EXECUTE.
- *
- * The caller is responsible for gating on the skills capability before calling.
- */
-export async function injectSkillCatalog(
-  params: InjectSkillCatalogParams,
-): Promise<InjectSkillCatalogResult> {
-  const {
-    agent,
-    toolDefinitions: inputDefs,
-    toolRegistry,
-    accessibleSkillIds,
-    contextWindowTokens,
-    listSkillsByAccess,
-    codeEnvAvailable,
-    statefulSessions,
-    workspaceTools,
-    workspaceOperations,
-    workspaceCommandTimeoutMaxMs,
-    workspaceEnvironment,
-    workspaceLinkedWorktrees,
-    userId,
-    skillStates,
-    defaultActiveOnShare = false,
-    maxCatalogSkills,
-    resolvedCatalog,
-    skillAuthoringAvailable = false,
-  } = params;
-  const { activeSkills, catalogLimit, visibleCount, reachedEnd } =
-    resolvedCatalog ??
-    (await resolveSkillCatalog({
-      accessibleSkillIds,
-      listSkillsByAccess,
-      userId,
-      skillStates,
-      defaultActiveOnShare,
-      maxCatalogSkills,
-    }));
-
-  /**
-   * Nothing to catalog and nothing the model could author: skip registration
-   * entirely rather than spend description tokens on tools with no targets.
-   * Authoring runs fall through — the `skill` tool still registers below so a
-   * skill created mid-run is invocable, and `read_file` stays available for
-   * its bundled files.
-   */
-  if (activeSkills.length === 0 && !skillAuthoringAvailable) {
+  if (activeSkills.length === 0) {
     return {
       toolDefinitions: inputDefs,
       skillCount: 0,
@@ -769,53 +612,33 @@ export async function injectSkillCatalog(
   /**
    * Catalog text is gated on the visible subset — `disable-model-invocation`
    * skills cost zero context tokens. When no visible skills exist, the
-   * model gets no catalog, and the `skill` tool is omitted from the
-   * registry unless this run can author one (registering it otherwise
-   * would burn description tokens for a tool the model has no targets
-   * for). `read_file` and `bash_tool` are still
+   * model gets no catalog and the `skill` tool is omitted from the
+   * registry (registering it would burn description tokens for a tool
+   * the model has no targets for). `read_file` and `bash_tool` are still
    * registered though: manually-primed disabled skills can have their
    * SKILL.md body in context referring to `references/*` and `scripts/*`,
    * and those reads would otherwise be impossible.
    */
   if (catalogVisibleSkills.length > 0) {
-    const catalogOptions = {
-      contextWindowTokens: contextWindowTokens || 200_000,
-      maxEntryChars: SKILL_CATALOG_MAX_ENTRY_CHARS,
-    };
     const catalog = formatSkillCatalog(
       catalogVisibleSkills.map((s) => ({ name: s.name, description: s.description })),
-      catalogOptions,
+      { contextWindowTokens: contextWindowTokens || 200_000 },
     );
     if (catalog) {
-      const delivered = measureCatalogDescriptions(catalogVisibleSkills, catalogOptions);
-      for (let i = 0; i < catalogVisibleSkills.length; i++) {
-        const s = catalogVisibleSkills[i];
-        const reached = delivered[i];
-        if (reached >= s.description.length) {
-          continue;
-        }
-        logger.warn(
-          reached === 0
-            ? `[injectSkillCatalog] skill "${s.name}" description was dropped from the model catalog (was ${s.description.length} chars) — the catalog exceeded its context budget`
-            : `[injectSkillCatalog] skill "${s.name}" description reached the model truncated to ${reached} of ${s.description.length} chars`,
-        );
-      }
       agent.additional_instructions = agent.additional_instructions
         ? `${agent.additional_instructions}\n\n${catalog}`
         : catalog;
     }
   }
 
-  const skillToolDef = getSkillToolDefinition(skillAuthoringAvailable);
-  const skillToolAvailable = isSkillToolAvailable({
-    modelInvocableSkillsAvailable: catalogVisibleSkills.length > 0,
-    skillAuthoringAvailable,
-  });
+  const skillToolDef: LCTool = {
+    name: SkillToolDefinition.name,
+    description: SkillToolDefinition.description,
+    parameters: SkillToolDefinition.parameters as unknown as LCTool['parameters'],
+  };
 
   /**
-   * `skill` tool is conditional on having anything for the model to invoke —
-   * a catalog-visible skill, or an authoring run where the model can create
-   * one and invoke it in the same conversation.
+   * `skill` tool is conditional on having anything for the model to invoke.
    * `read_file` + `bash_tool` go through `registerCodeExecutionTools` so
    * a prior registration from `initializeAgent` (for the `execute_code`
    * capability) upgrades to the skill-aware `read_file` definition without
@@ -825,22 +648,8 @@ export async function injectSkillCatalog(
    * `codeEnvAvailable` as before.
    */
   let workingDefs: LCTool[] = [...(inputDefs ?? [])];
-  if (skillToolAvailable) {
-    /**
-     * Replace rather than skip, so the registry the host handler resolves and
-     * the array the model reads never disagree about which variant is live.
-     * Skipping would leave an earlier catalog-only definition telling an
-     * authoring run's model that a skill it just created is an invalid name —
-     * the exact failure this registration exists to prevent — while the
-     * registry claimed otherwise. Mirrors how `registerCodeExecutionTools`
-     * upgrades a code-only `read_file` in place instead of suppressing it.
-     */
-    const existingIndex = workingDefs.findIndex((def) => def.name === skillToolDef.name);
-    if (existingIndex >= 0) {
-      workingDefs[existingIndex] = skillToolDef;
-    } else {
-      workingDefs.push(skillToolDef);
-    }
+  if (catalogVisibleSkills.length > 0) {
+    workingDefs.push(skillToolDef);
     toolRegistry?.set(skillToolDef.name, skillToolDef);
   }
 
@@ -862,17 +671,13 @@ export async function injectSkillCatalog(
     includeBash: codeEnvAvailable === true,
     enableToolOutputReferences: codeEnvAvailable === true,
     statefulSessions: statefulSessions === true,
-    workspaceTools: workspaceTools === true,
-    workspaceOperations,
-    workspaceCommandTimeoutMaxMs,
-    workspaceEnvironment,
-    workspaceLinkedWorktrees,
   });
   workingDefs = codeExecResult.toolDefinitions;
 
-  const toolNames = skillToolAvailable
-    ? [skillToolDef.name, ReadFileToolDefinition.name]
-    : [ReadFileToolDefinition.name];
+  const toolNames =
+    catalogVisibleSkills.length > 0
+      ? [skillToolDef.name, ReadFileToolDefinition.name]
+      : [ReadFileToolDefinition.name];
 
   return {
     toolDefinitions: workingDefs,
@@ -905,27 +710,6 @@ export function buildSkillPrimeMessage(skill: { name: string; body: string }): I
   };
 }
 
-/** Builds the exact live Skill overlay placed at the tail of an event actor checkpoint fork. */
-export function buildAgentEventActorSkillMessages(
-  skills: ReadonlyMap<string, string>,
-): HumanMessage[] {
-  return [...skills.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(
-      ([name, body]) =>
-        new HumanMessage({
-          id: `event-actor-skill:${createSkillContentDigest(`${name}\0${body}`)}`,
-          content: body,
-          additional_kwargs: {
-            isMeta: true,
-            source: SKILL_MESSAGE_SOURCE,
-            trigger: SKILL_TRIGGER_MODEL,
-            skillName: name,
-          },
-        }),
-    );
-}
-
 export interface ResolveManualSkillsParams {
   /** Skill names the user invoked (via `$` popover or `always-apply`). */
   names: string[];
@@ -944,11 +728,8 @@ export interface ResolveManualSkillsParams {
     _id: Types.ObjectId;
     name: string;
     body: string;
-    version?: number;
     author: Types.ObjectId | string;
     deployment?: boolean;
-    /** Structured SKILL.md metadata retained for model-bound policy checks. */
-    frontmatter?: Record<string, unknown>;
     /**
      * Skill-declared tool allowlist, forwarded verbatim from the skill doc.
      * Surfaced on `ResolvedManualSkill` so future runtime enforcement can
@@ -993,10 +774,6 @@ export interface ResolvedSkillPrime {
   _id: Types.ObjectId;
   name: string;
   body: string;
-  /** Monotonic Skill revision used by checkpoint compatibility. */
-  version?: number;
-  /** Structured SKILL.md metadata retained for model-bound policy checks. */
-  frontmatter?: Record<string, unknown>;
   /**
    * Skill-declared tool allowlist passed through from the skill doc. Present
    * only when the skill author declared `allowed-tools` in frontmatter.
@@ -1067,8 +844,15 @@ export async function resolveManualSkills(
    */
   let boundedNames = uniqueNames;
   if (uniqueNames.length > MAX_MANUAL_SKILLS) {
+    const droppedAll = uniqueNames.slice(MAX_MANUAL_SKILLS);
+    const DROPPED_LOG_SAMPLE = 5;
+    const droppedSample = droppedAll.slice(0, DROPPED_LOG_SAMPLE).join(', ');
+    const droppedSuffix =
+      droppedAll.length > DROPPED_LOG_SAMPLE
+        ? `, ... (${droppedAll.length - DROPPED_LOG_SAMPLE} more)`
+        : '';
     logger.warn(
-      `[resolveManualSkills] Truncating manual skill list from ${uniqueNames.length} to ${MAX_MANUAL_SKILLS}`,
+      `[resolveManualSkills] Truncating manual skill list from ${uniqueNames.length} to ${MAX_MANUAL_SKILLS}: dropped [${droppedSample}${droppedSuffix}]`,
     );
     boundedNames = uniqueNames.slice(0, MAX_MANUAL_SKILLS);
   }
@@ -1090,7 +874,7 @@ export async function resolveManualSkills(
           preferUserInvocable: true,
         });
         if (!skill) {
-          logger.warn('[resolveManualSkills] Requested skill not found or not accessible');
+          logger.warn(`[resolveManualSkills] Skill "${name}" not found or not accessible`);
           return null;
         }
         /**
@@ -1108,11 +892,11 @@ export async function resolveManualSkills(
          * operators triage faster.
          */
         if (skill.userInvocable === false) {
-          logger.warn('[resolveManualSkills] Requested skill is not user-invocable — skipping');
+          logger.warn(`[resolveManualSkills] Skill "${name}" is not user-invocable — skipping`);
           return null;
         }
         if (!skill.body) {
-          logger.warn('[resolveManualSkills] Requested skill has empty body — skipping');
+          logger.warn(`[resolveManualSkills] Skill "${name}" has empty body — skipping`);
           return null;
         }
         const active = resolveSkillActive({
@@ -1122,22 +906,23 @@ export async function resolveManualSkills(
           defaultActiveOnShare,
         });
         if (!active) {
-          logger.warn('[resolveManualSkills] Requested skill is inactive for this user — skipping');
+          logger.warn(`[resolveManualSkills] Skill "${name}" is inactive for this user — skipping`);
           return null;
         }
         const resolved: ResolvedManualSkill = {
           _id: skill._id,
           name: skill.name,
           body: skill.body,
-          version: skill.version,
-          frontmatter: skill.frontmatter,
         };
         if (skill.allowedTools !== undefined) {
           resolved.allowedTools = skill.allowedTools;
         }
         return resolved;
-      } catch {
-        logger.warn('[resolveManualSkills] Failed to resolve a requested skill');
+      } catch (err) {
+        logger.warn(
+          `[resolveManualSkills] Failed to resolve skill "${name}":`,
+          err instanceof Error ? err.message : err,
+        );
         return null;
       }
     }),
@@ -1164,9 +949,7 @@ export interface ResolveAlwaysApplySkillsParams {
       name: string;
       body: string;
       author: Types.ObjectId | string;
-      frontmatter?: Record<string, unknown>;
       allowedTools?: string[];
-      version?: number;
       deployment?: boolean;
     }>;
     has_more?: boolean;
@@ -1262,7 +1045,7 @@ export async function resolveAlwaysApplySkills(
         break;
       }
       if (!skill.body) {
-        logger.warn('[resolveAlwaysApplySkills] Skill has empty body — skipping');
+        logger.warn(`[resolveAlwaysApplySkills] Skill "${skill.name}" has empty body — skipping`);
         continue;
       }
       const active = resolveSkillActive({
@@ -1291,8 +1074,6 @@ export async function resolveAlwaysApplySkills(
         _id: skill._id,
         name: skill.name,
         body: skill.body,
-        version: skill.version,
-        frontmatter: skill.frontmatter,
       };
       if (skill.allowedTools !== undefined) {
         prime.allowedTools = skill.allowedTools;
@@ -1473,58 +1254,6 @@ export interface InjectSkillPrimesResult {
   alwaysApplyDedupedFromManual: number;
 }
 
-export interface SelectSkillPrimesForTurnResult<ManualPrime, AlwaysApplyPrime> {
-  manualSkillPrimes: ManualPrime[];
-  alwaysApplySkillPrimes: AlwaysApplyPrime[];
-  alwaysApplyDropped: number;
-  alwaysApplyDedupedFromManual: number;
-}
-
-/**
- * Resolves the one authoritative set of skill primes for a turn. Keeping this
- * selection separate from message injection lets every earlier consumer
- * (content inspection, allowed-tool union, persisted pills) operate on exactly
- * the same deduped and capped lists that the model will eventually receive.
- */
-export function selectSkillPrimesForTurn<
-  ManualPrime extends Pick<ResolvedManualSkill, 'name'>,
-  AlwaysApplyPrime extends Pick<ResolvedAlwaysApplySkill, 'name'>,
->(params: {
-  manualSkillPrimes: readonly ManualPrime[];
-  alwaysApplySkillPrimes: readonly AlwaysApplyPrime[];
-  maxPrimesPerTurn?: number;
-}): SelectSkillPrimesForTurnResult<ManualPrime, AlwaysApplyPrime> {
-  const {
-    manualSkillPrimes,
-    alwaysApplySkillPrimes,
-    maxPrimesPerTurn = MAX_PRIMED_SKILLS_PER_TURN,
-  } = params;
-  let alwaysApply = [...alwaysApplySkillPrimes];
-  let alwaysApplyDedupedFromManual = 0;
-
-  if (alwaysApply.length > 0 && manualSkillPrimes.length > 0) {
-    const manualNames = new Set(manualSkillPrimes.map((prime) => prime.name));
-    const deduped = alwaysApply.filter((prime) => !manualNames.has(prime.name));
-    alwaysApplyDedupedFromManual = alwaysApply.length - deduped.length;
-    alwaysApply = deduped;
-  }
-
-  let alwaysApplyDropped = 0;
-  const total = manualSkillPrimes.length + alwaysApply.length;
-  if (total > maxPrimesPerTurn) {
-    const budgetForAlwaysApply = Math.max(0, maxPrimesPerTurn - manualSkillPrimes.length);
-    alwaysApplyDropped = alwaysApply.length - budgetForAlwaysApply;
-    alwaysApply = alwaysApply.slice(0, budgetForAlwaysApply);
-  }
-
-  return {
-    manualSkillPrimes: [...manualSkillPrimes],
-    alwaysApplySkillPrimes: alwaysApply,
-    alwaysApplyDropped,
-    alwaysApplyDedupedFromManual,
-  };
-}
-
 /**
  * Splices manual + always-apply skill prime messages into a formatted
  * message array just before the latest user message. Ordering: always-apply
@@ -1554,23 +1283,26 @@ export function injectSkillPrimes(params: InjectSkillPrimesParams): InjectSkillP
   } = params;
   let { indexTokenCountMap } = params;
 
-  const selected = selectSkillPrimesForTurn({
-    manualSkillPrimes,
-    alwaysApplySkillPrimes,
-    maxPrimesPerTurn,
-  });
-  const {
-    alwaysApplySkillPrimes: alwaysApply,
-    alwaysApplyDropped,
-    alwaysApplyDedupedFromManual,
-  } = selected;
-  if (alwaysApplyDedupedFromManual > 0) {
-    logger.info(
-      `[injectSkillPrimes] Dropped ${alwaysApplyDedupedFromManual} always-apply prime(s) already present in the manual list; same-named skills are primed only once per turn.`,
-    );
+  let alwaysApply = alwaysApplySkillPrimes;
+  let alwaysApplyDedupedFromManual = 0;
+  if (alwaysApply.length > 0 && manualSkillPrimes.length > 0) {
+    const manualNames = new Set(manualSkillPrimes.map((p) => p.name));
+    const deduped = alwaysApply.filter((p) => !manualNames.has(p.name));
+    alwaysApplyDedupedFromManual = alwaysApply.length - deduped.length;
+    if (alwaysApplyDedupedFromManual > 0) {
+      logger.info(
+        `[injectSkillPrimes] Dropped ${alwaysApplyDedupedFromManual} always-apply prime(s) already present in the manual list; same-named skills are primed only once per turn.`,
+      );
+      alwaysApply = deduped;
+    }
   }
-  if (alwaysApplyDropped > 0) {
-    const total = manualSkillPrimes.length + alwaysApplySkillPrimes.length;
+
+  let alwaysApplyDropped = 0;
+  const total = manualSkillPrimes.length + alwaysApply.length;
+  if (total > maxPrimesPerTurn) {
+    const budgetForAlwaysApply = Math.max(0, maxPrimesPerTurn - manualSkillPrimes.length);
+    alwaysApplyDropped = alwaysApply.length - budgetForAlwaysApply;
+    alwaysApply = alwaysApply.slice(0, budgetForAlwaysApply);
     logger.warn(
       `[injectSkillPrimes] Combined primes ${total} exceeds cap ${maxPrimesPerTurn}; dropping ${alwaysApplyDropped} always-apply prime(s) to preserve manual invocations.`,
     );

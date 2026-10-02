@@ -16,9 +16,13 @@ function requireRumProxyEnabled(_req, res, next) {
   return next();
 }
 
-const proxyTelemetry = (req, res) => proxyRumRequest(req, res, process.env.RUM_PROXY_AUTHORIZATION);
-
-router.post('/v1/traces', requireRumProxyEnabled, requireRumProxyAuth, rawOtlpBody, proxyTelemetry);
-router.post('/v1/logs', requireRumProxyEnabled, requireRumProxyAuth, rawOtlpBody, proxyTelemetry);
+router.post(
+  '/v1/traces',
+  requireRumProxyEnabled,
+  requireRumProxyAuth,
+  rawOtlpBody,
+  proxyRumRequest,
+);
+router.post('/v1/logs', requireRumProxyEnabled, requireRumProxyAuth, rawOtlpBody, proxyRumRequest);
 
 module.exports = router;

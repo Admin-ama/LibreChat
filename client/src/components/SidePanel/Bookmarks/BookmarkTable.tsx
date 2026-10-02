@@ -4,10 +4,10 @@ import { Button, FilterInput, OGDialogTrigger, TooltipAnchor } from '@librechat/
 import type { ConversationTagsResponse, TConversationTag } from 'librechat-data-provider';
 import { BookmarkContext, useBookmarkContext } from '~/Providers/BookmarkContext';
 import { BookmarkEditDialog } from '~/components/Bookmarks';
-import BookmarkCardSkeleton from './BookmarkCardSkeleton';
-import { PanelContent } from '~/components/ui';
 import BookmarkList from './BookmarkList';
 import { useLocalize } from '~/hooks';
+
+const pageSize = 10;
 
 const removeDuplicates = (bookmarks: TConversationTag[]) => {
   const seen = new Set();
@@ -18,9 +18,10 @@ const removeDuplicates = (bookmarks: TConversationTag[]) => {
   });
 };
 
-const BookmarkTable = ({ isLoading = false }: { isLoading?: boolean }) => {
+const BookmarkTable = () => {
   const localize = useLocalize();
   const [rows, setRows] = useState<ConversationTagsResponse>([]);
+  const [pageIndex, setPageIndex] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -30,6 +31,11 @@ const BookmarkTable = ({ isLoading = false }: { isLoading?: boolean }) => {
     const _bookmarks = removeDuplicates(bookmarks).sort((a, b) => a.position - b.position);
     setRows(_bookmarks);
   }, [bookmarks]);
+
+  // Reset page when search changes
+  useEffect(() => {
+    setPageIndex(0);
+  }, [searchQuery]);
 
   const moveRow = useCallback((dragIndex: number, hoverIndex: number) => {
     setRows((prevTags: TConversationTag[]) => {
@@ -44,15 +50,14 @@ const BookmarkTable = ({ isLoading = false }: { isLoading?: boolean }) => {
     (row) => row.tag && row.tag.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
+  const currentRows = filteredRows.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize);
+  const totalPages = Math.ceil(filteredRows.length / pageSize);
+
   return (
     <BookmarkContext.Provider value={{ bookmarks }}>
-      <div
-        role="region"
-        aria-label={localize('com_ui_bookmarks')}
-        className="flex min-h-0 flex-1 flex-col"
-      >
-        {/* Sticky header: filter + create */}
-        <div className="flex shrink-0 items-center gap-2 px-3 pb-2">
+      <div role="region" aria-label={localize('com_ui_bookmarks')} className="space-y-2 px-3 pb-3">
+        {/* Header: Filter + Create Button */}
+        <div className="flex items-center gap-2">
           <FilterInput
             inputId="bookmarks-filter"
             label={localize('com_ui_bookmarks_filter')}
@@ -81,18 +86,43 @@ const BookmarkTable = ({ isLoading = false }: { isLoading?: boolean }) => {
           </BookmarkEditDialog>
         </div>
 
-        {/* Only the list scrolls */}
-        <PanelContent
-          isLoading={isLoading}
-          skeleton={<BookmarkCardSkeleton />}
-          className="px-3 pb-3"
-        >
-          <BookmarkList
-            bookmarks={filteredRows}
-            moveRow={moveRow}
-            isFiltered={searchQuery.length > 0}
-          />
-        </PanelContent>
+        {/* Bookmark List */}
+        <BookmarkList
+          bookmarks={currentRows}
+          moveRow={moveRow}
+          isFiltered={searchQuery.length > 0}
+        />
+
+        {/* Pagination */}
+        {filteredRows.length > pageSize && (
+          <div
+            className="flex items-center justify-end gap-2"
+            role="navigation"
+            aria-label="Pagination"
+          >
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPageIndex((prev) => Math.max(prev - 1, 0))}
+              disabled={pageIndex === 0}
+              aria-label={localize('com_ui_prev')}
+            >
+              {localize('com_ui_prev')}
+            </Button>
+            <div className="whitespace-nowrap text-sm" aria-live="polite">
+              {pageIndex + 1} / {totalPages}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPageIndex((prev) => (prev + 1 < totalPages ? prev + 1 : prev))}
+              disabled={pageIndex + 1 >= totalPages}
+              aria-label={localize('com_ui_next')}
+            >
+              {localize('com_ui_next')}
+            </Button>
+          </div>
+        )}
       </div>
     </BookmarkContext.Provider>
   );

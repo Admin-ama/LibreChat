@@ -27,26 +27,11 @@ describe('createSteerIndexOffsetHandlers', () => {
     );
 
     const handler = wrapped![GraphEvents.ON_RUN_STEP];
-    handler.handle(
-      GraphEvents.ON_RUN_STEP,
-      { id: 'step-1', index: 0 } as never,
-      undefined,
-      undefined,
-    );
+    handler.handle(GraphEvents.ON_RUN_STEP, { id: 'step-1', index: 0 }, undefined, undefined);
     state.offset = 1;
-    handler.handle(
-      GraphEvents.ON_RUN_STEP,
-      { id: 'step-2', index: 1 } as never,
-      undefined,
-      undefined,
-    );
+    handler.handle(GraphEvents.ON_RUN_STEP, { id: 'step-2', index: 1 }, undefined, undefined);
     state.offset = 2;
-    handler.handle(
-      GraphEvents.ON_RUN_STEP,
-      { id: 'step-3', index: 2 } as never,
-      undefined,
-      undefined,
-    );
+    handler.handle(GraphEvents.ON_RUN_STEP, { id: 'step-3', index: 2 }, undefined, undefined);
 
     expect(calls.map((c) => (c.data as { index: number }).index)).toEqual([0, 2, 4]);
   });
@@ -62,14 +47,14 @@ describe('createSteerIndexOffsetHandlers', () => {
     const handler = wrapped![GraphEvents.ON_AGENT_UPDATE];
     handler.handle(
       GraphEvents.ON_AGENT_UPDATE,
-      { agent_update: { index: 3, runId: 'run-1' } } as never,
+      { agent_update: { index: 3, runId: 'run-1' } },
       undefined,
       undefined,
     );
     state.offset = 2;
     handler.handle(
       GraphEvents.ON_AGENT_UPDATE,
-      { agent_update: { index: 4, runId: 'run-1' } } as never,
+      { agent_update: { index: 4, runId: 'run-1' } },
       undefined,
       undefined,
     );
@@ -94,7 +79,7 @@ describe('createSteerIndexOffsetHandlers', () => {
     expect(wrapped![GraphEvents.ON_MESSAGE_DELTA]).toBe(passthrough);
     wrapped![GraphEvents.ON_RUN_STEP].handle(
       GraphEvents.ON_RUN_STEP,
-      { id: 'step-x' } as never,
+      { id: 'step-x' },
       undefined,
       undefined,
     );
@@ -114,19 +99,9 @@ describe('createSteerIndexOffsetHandlers', () => {
     );
 
     const handler = wrapped![GraphEvents.ON_RUN_STEP];
-    handler.handle(
-      GraphEvents.ON_RUN_STEP,
-      { id: 'step-1', index: 0 } as never,
-      undefined,
-      undefined,
-    );
+    handler.handle(GraphEvents.ON_RUN_STEP, { id: 'step-1', index: 0 }, undefined, undefined);
     state.offset = 1;
-    handler.handle(
-      GraphEvents.ON_RUN_STEP,
-      { id: 'step-2', index: 1 } as never,
-      undefined,
-      undefined,
-    );
+    handler.handle(GraphEvents.ON_RUN_STEP, { id: 'step-2', index: 1 }, undefined, undefined);
 
     // seed offset (2) applies inside; steer offset applies on top
     expect(calls.map((c) => (c.data as { index: number }).index)).toEqual([2, 4]);
