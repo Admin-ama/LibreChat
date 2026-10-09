@@ -65,6 +65,7 @@ describe('applyModelSpecEphemeralAgent', () => {
         web_search: false,
         file_search: true,
         memory: false,
+        skills: false,
         artifacts: 'default',
       });
     });
@@ -112,6 +113,24 @@ describe('applyModelSpecEphemeralAgent', () => {
       const disabled = createModelSpec({ memory: false });
       applyModelSpecEphemeralAgent({ convoId: null, modelSpec: disabled, updateEphemeralAgent });
       expect((updateEphemeralAgent.mock.calls[0][1] as TEphemeralAgent).memory).toBe(false);
+    });
+
+    it('should honor the skills default from the spec', () => {
+      const enabled = createModelSpec({ skills: true });
+      applyModelSpecEphemeralAgent({ convoId: null, modelSpec: enabled, updateEphemeralAgent });
+      expect((updateEphemeralAgent.mock.calls[0][1] as TEphemeralAgent).skills).toBe(true);
+
+      updateEphemeralAgent.mockClear();
+
+      const allowlist = createModelSpec({ skills: ['skill-a'] });
+      applyModelSpecEphemeralAgent({ convoId: null, modelSpec: allowlist, updateEphemeralAgent });
+      expect((updateEphemeralAgent.mock.calls[0][1] as TEphemeralAgent).skills).toBe(true);
+
+      updateEphemeralAgent.mockClear();
+
+      const disabled = createModelSpec({ skills: false });
+      applyModelSpecEphemeralAgent({ convoId: null, modelSpec: disabled, updateEphemeralAgent });
+      expect((updateEphemeralAgent.mock.calls[0][1] as TEphemeralAgent).skills).toBe(false);
     });
 
     it('should map artifacts: true to "default" string', () => {
@@ -241,6 +260,7 @@ describe('applyModelSpecEphemeralAgent', () => {
         web_search: false,
         file_search: true,
         memory: false,
+        skills: false,
         artifacts: 'default',
       });
     });
