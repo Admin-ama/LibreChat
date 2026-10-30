@@ -33,6 +33,7 @@ const {
   hasRuntimeUrlPlaceholders,
   containsGraphTokenPlaceholder,
   isOAuthServer,
+  orderServerConfigs,
 } = require('@librechat/api');
 const {
   Time,
@@ -353,11 +354,10 @@ async function resolveAllMcpConfigs(userId, user) {
       error,
     );
   }
-  if (user?.role) {
-    return await registry.getAllServerConfigs(userId, configServers, user.role);
-  }
-
-  return await registry.getAllServerConfigs(userId, configServers);
+  const configs = user?.role
+    ? await registry.getAllServerConfigs(userId, configServers, user.role)
+    : await registry.getAllServerConfigs(userId, configServers);
+  return orderServerConfigs(configs, Object.keys(appConfig?.mcpConfig ?? {}));
 }
 
 /**

@@ -478,6 +478,28 @@ export function redactServerSecrets(
   ) as Partial<ParsedServerConfig>;
 }
 
+/**
+ * Reorders a server config map so servers listed in `preferredOrder` (the `mcpServers` key order
+ * from librechat.yaml) come first, in that order; any remaining servers keep their relative order.
+ */
+export function orderServerConfigs<T>(
+  configs: Record<string, T>,
+  preferredOrder: readonly string[],
+): Record<string, T> {
+  const result: Record<string, T> = {};
+  for (const name of preferredOrder) {
+    if (Object.prototype.hasOwnProperty.call(configs, name)) {
+      result[name] = configs[name];
+    }
+  }
+  for (const [name, config] of Object.entries(configs)) {
+    if (!Object.prototype.hasOwnProperty.call(result, name)) {
+      result[name] = config;
+    }
+  }
+  return result;
+}
+
 /** Applies allowlist-based sanitization to a map of server configs. */
 export function redactAllServerSecrets(
   configs: Record<string, ParsedServerConfig>,

@@ -6,6 +6,7 @@ import {
   findShadowedServerNames,
   splitMCPToolKey,
   redactAllServerSecrets,
+  orderServerConfigs,
   redactServerSecrets,
   requiresUserScopedConnection,
   isInvalidClientMessage,
@@ -587,6 +588,26 @@ describe('redactAllServerSecrets', () => {
     const canEditByServer = new Map<string, boolean>([['config-server', true]]);
     const redacted = redactAllServerSecrets(configs, { canEditByServer });
     expect(redacted['config-server'].url).toBe('https://infra.internal/mcp');
+  });
+});
+
+describe('orderServerConfigs', () => {
+  it('orders servers by the preferred list and keeps the rest in their original order', () => {
+    const configs = { archivos: 1, n8n: 2, outlook: 3, huly: 4, teams: 5, userServer: 6 };
+    const ordered = orderServerConfigs(configs, ['outlook', 'teams', 'huly', 'missing']);
+    expect(Object.keys(ordered)).toEqual([
+      'outlook',
+      'teams',
+      'huly',
+      'archivos',
+      'n8n',
+      'userServer',
+    ]);
+    expect(ordered).toEqual(configs);
+  });
+
+  it('returns the same entries when no order is given', () => {
+    expect(Object.keys(orderServerConfigs({ b: 1, a: 2 }, []))).toEqual(['b', 'a']);
   });
 });
 
