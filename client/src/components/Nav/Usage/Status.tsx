@@ -1,7 +1,14 @@
 import { useEffect, useRef } from 'react';
+import { Lock } from 'lucide-react';
 import { useRecoilValue } from 'recoil';
 import type { TUsageWindow } from 'librechat-data-provider';
-import { formatUsd, usagePercent, formatCountdown, usageWindowLabelKeys } from '~/utils/usage';
+import {
+  formatUsd,
+  usagePercent,
+  formatCountdown,
+  usageWindowLabelKeys,
+  usageWindowShortLabelKeys,
+} from '~/utils/usage';
 import { useAuthContext } from '~/hooks/AuthContext';
 import { useGetUsageQuery } from '~/data-provider';
 import { useLocalize } from '~/hooks';
@@ -11,9 +18,47 @@ import store from '~/store';
 const countdownOf = (window: TUsageWindow): string | null =>
   formatCountdown(window.resetAt ?? window.releaseAt);
 
+const isBlocked = (window: TUsageWindow): boolean =>
+  window.limit != null && window.spent >= window.limit;
+
+function WindowMeter({ window }: { window: TUsageWindow }) {
+  const localize = useLocalize();
+  const percent = usagePercent(window.spent, window.limit) ?? 0;
+  const blocked = isBlocked(window);
+  const fill = blocked ? 'bg-red-500' : 'bg-green-600';
+  const countdown = blocked ? countdownOf(window) : null;
+
+  return (
+    <span className="flex items-center gap-1.5">
+      <span>{localize(usageWindowShortLabelKeys[window.key])}</span>
+      <span
+        aria-hidden="true"
+        className="h-1.5 w-12 overflow-hidden rounded-full bg-surface-tertiary"
+      >
+        <span
+          className={cn(
+            'block h-full rounded-full',
+            !blocked && percent >= 80 ? 'bg-amber-500' : fill,
+          )}
+          style={{ width: `${percent}%` }}
+        />
+      </span>
+      <span className={cn('tabular-nums', blocked && 'font-medium text-red-500')}>
+        {Math.round(percent)}%
+      </span>
+      {blocked && (
+        <span className="flex items-center gap-0.5 font-medium text-red-500">
+          <Lock className="size-3" aria-hidden="true" />
+          {countdown}
+        </span>
+      )}
+    </span>
+  );
+}
+
 /**
- * Compact OpenCode/Claude-style meter for the chat footer: one bar for the most
- * used window plus "% and time left" per capped window; full USD detail on hover.
+ * Chat footer usage meter: a mini bar per capped rolling window (5h / week / month),
+ * lock and countdown when blocked, USD detail on hover. Uncapped users see their spend.
  */
 export default function UsageStatus() {
   const localize = useLocalize();
@@ -34,10 +79,6 @@ export default function UsageStatus() {
   }
 
   const capped = data.enabled ? data.windows.filter((w) => w.limit != null) : [];
-  const percents = capped.map((w) => usagePercent(w.spent, w.limit) ?? 0);
-  const top = percents.length > 0 ? Math.max(...percents) : 0;
-  const blocked = capped.some((w) => w.limit != null && w.spent >= w.limit);
-  const barColor = blocked ? 'bg-red-500' : 'bg-green-600';
 
   const tooltip = data.windows
     .map((w) => {
@@ -55,45 +96,19 @@ export default function UsageStatus() {
 
   return (
     <div
-      className="flex items-center gap-2 whitespace-nowrap text-xs text-text-secondary"
+      className="flex items-center gap-3 whitespace-nowrap text-xs text-text-secondary"
       title={tooltip}
       aria-label={tooltip}
       role="status"
     >
-      <span>{localize('com_nav_usage_used')}</span>
-      {capped.length > 0 && (
-        <span
-          aria-hidden="true"
-          className="h-1.5 w-16 overflow-hidden rounded-full bg-surface-tertiary"
-        >
-          <span
-            className={cn(
-              'block h-full rounded-full',
-              !blocked && top >= 80 ? 'bg-amber-500' : barColor,
-            )}
-            style={{ width: `${top}%` }}
-          />
-        </span>
-      )}
       {capped.length > 0 ? (
-        <span className="tabular-nums">
-          {capped.map((w, i) => {
-            const countdown = countdownOf(w);
-            const isBlocked = w.limit != null && w.spent >= w.limit;
-            return (
-              <span key={w.key}>
-                {i > 0 && ' · '}
-                <span className={cn(isBlocked && 'font-medium text-red-500')}>
-                  {Math.round(percents[i])}%{countdown ? ` ${countdown}` : ''}
-                </span>
-              </span>
-            );
-          })}
-        </span>
+        capped.map((w) => <WindowMeter key={w.key} window={w} />)
       ) : (
         <span className="tabular-nums">
-          {data.windows.map((w) => formatUsd(w.spent)).join(' · ')} ·{' '}
-          {localize('com_nav_usage_unlimited')}
+          {data.windows
+            .map((w) => `${localize(usageWindowShortLabelKeys[w.key])} ${formatUsd(w.spent)}`)
+            .join(' · ')}{' '}
+          · {localize('com_nav_usage_unlimited')}
         </span>
       )}
     </div>

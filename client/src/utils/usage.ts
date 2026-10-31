@@ -7,6 +7,12 @@ export const usageWindowLabelKeys: Record<UsageWindowKey, TranslationKeys> = {
   monthly: 'com_nav_usage_monthly',
 };
 
+export const usageWindowShortLabelKeys: Record<UsageWindowKey, TranslationKeys> = {
+  fiveHour: 'com_nav_usage_five_hour_short',
+  weekly: 'com_nav_usage_weekly_short',
+  monthly: 'com_nav_usage_monthly_short',
+};
+
 const usdFormatter = new Intl.NumberFormat(undefined, {
   style: 'currency',
   currency: 'USD',
