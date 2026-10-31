@@ -3,7 +3,6 @@ import { Lock } from 'lucide-react';
 import { useRecoilValue } from 'recoil';
 import type { TUsageWindow } from 'librechat-data-provider';
 import {
-  formatUsd,
   usagePercent,
   formatCountdown,
   usageWindowLabelKeys,
@@ -21,10 +20,12 @@ const countdownOf = (window: TUsageWindow): string | null =>
 const isBlocked = (window: TUsageWindow): boolean =>
   window.limit != null && window.spent >= window.limit;
 
-function WindowMeter({ window }: { window: TUsageWindow }) {
+const percentOf = (window: TUsageWindow): number => usagePercent(window.spent, window.limit) ?? 0;
+
+function WindowMeter({ window, enforced }: { window: TUsageWindow; enforced: boolean }) {
   const localize = useLocalize();
-  const percent = usagePercent(window.spent, window.limit) ?? 0;
-  const blocked = isBlocked(window);
+  const percent = percentOf(window);
+  const blocked = enforced && isBlocked(window);
   const fill = blocked ? 'bg-red-500' : 'bg-green-600';
   const countdown = blocked ? countdownOf(window) : null;
 
@@ -57,8 +58,9 @@ function WindowMeter({ window }: { window: TUsageWindow }) {
 }
 
 /**
- * Chat footer usage meter: a mini bar per capped rolling window (5h / week / month),
- * lock and countdown when blocked, USD detail on hover. Uncapped users see their spend.
+ * Chat footer usage meter: a mini bar per rolling window (5h / week / month) as a
+ * percentage of its cap, lock and countdown when blocked. Never shows amounts; users
+ * without enforced limits still see their % of the configured caps.
  */
 export default function UsageStatus() {
   const localize = useLocalize();
@@ -78,21 +80,19 @@ export default function UsageStatus() {
     return null;
   }
 
-  const capped = data.enabled ? data.windows.filter((w) => w.limit != null) : [];
+  const capped = data.windows.filter((w) => w.limit != null);
+  if (capped.length === 0) {
+    return null;
+  }
 
-  const tooltip = data.windows
-    .map((w) => {
-      const label = localize(usageWindowLabelKeys[w.key]);
-      const amount =
-        data.enabled && w.limit != null
-          ? `${formatUsd(w.spent)} / ${formatUsd(w.limit)}`
-          : formatUsd(w.spent);
+  const tooltip = [
+    ...capped.map((w) => {
+      const line = `${localize(usageWindowLabelKeys[w.key])}: ${Math.round(percentOf(w))}%`;
       const countdown = countdownOf(w);
-      return countdown
-        ? `${label}: ${amount} · ${localize('com_nav_usage_frees_in', { 0: countdown })}`
-        : `${label}: ${amount}`;
-    })
-    .join('\n');
+      return countdown ? `${line} · ${localize('com_nav_usage_frees_in', { 0: countdown })}` : line;
+    }),
+    ...(data.enabled ? [] : [localize('com_nav_usage_unlimited')]),
+  ].join('\n');
 
   return (
     <div
@@ -101,16 +101,9 @@ export default function UsageStatus() {
       aria-label={tooltip}
       role="status"
     >
-      {capped.length > 0 ? (
-        capped.map((w) => <WindowMeter key={w.key} window={w} />)
-      ) : (
-        <span className="tabular-nums">
-          {data.windows
-            .map((w) => `${localize(usageWindowShortLabelKeys[w.key])} ${formatUsd(w.spent)}`)
-            .join(' · ')}{' '}
-          · {localize('com_nav_usage_unlimited')}
-        </span>
-      )}
+      {capped.map((w) => (
+        <WindowMeter key={w.key} window={w} enforced={data.enabled} />
+      ))}
     </div>
   );
 }

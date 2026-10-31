@@ -1,5 +1,5 @@
 import type { TUsageWindow } from 'librechat-data-provider';
-import { usageWindowLabelKeys, usagePercent, formatResetAt, formatUsd } from '~/utils/usage';
+import { usageWindowLabelKeys, usagePercent, formatResetAt } from '~/utils/usage';
 import { useLocalize } from '~/hooks';
 import { cn } from '~/utils';
 
@@ -26,7 +26,7 @@ function WindowBar({ window }: { window: TUsageWindow }) {
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(percent)}
-        aria-valuetext={`${formatUsd(window.spent)} / ${formatUsd(window.limit)}`}
+        aria-valuetext={`${Math.round(percent)}%`}
         className="h-1.5 w-full overflow-hidden rounded-full bg-surface-tertiary"
       >
         <div

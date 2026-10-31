@@ -2,7 +2,7 @@
 import { ViolationTypes, ErrorTypes, alternateName } from 'librechat-data-provider';
 import type { UsageWindowKey } from 'librechat-data-provider';
 import type { LocalizeFunction } from '~/common';
-import { usageWindowLabelKeys, formatUsd, formatResetAt } from '~/utils/usage';
+import { usageWindowLabelKeys, formatResetAt } from '~/utils/usage';
 import { formatJSON, extractJson, isJson } from '~/utils/json';
 import { useLocalize } from '~/hooks';
 import CodeBlock from './CodeBlock';
@@ -32,7 +32,6 @@ type TTokenBalance = {
 
 type TUsageLimit = {
   window: UsageWindowKey;
-  limit: number;
   resetAt: string | null;
 };
 
@@ -110,11 +109,10 @@ const errorMessages = {
       windowInMinutes > 1 ? `${windowInMinutes} minutes` : 'minute'
     }.`;
   },
-  usage_limit: ({ window, limit, resetAt }: TUsageLimit, localize: LocalizeFunction) =>
+  usage_limit: ({ window, resetAt }: TUsageLimit, localize: LocalizeFunction) =>
     localize('com_error_usage_limit', {
       0: localize(usageWindowLabelKeys[window]).toLocaleLowerCase(),
-      1: formatUsd(limit),
-      2: resetAt ? formatResetAt(resetAt) : localize('com_nav_usage_no_reset'),
+      1: resetAt ? formatResetAt(resetAt) : localize('com_nav_usage_no_reset'),
     }),
   token_balance: (json: TTokenBalance, localize: LocalizeFunction) => {
     const { balance, tokenCost, promptTokens, generations } = json;

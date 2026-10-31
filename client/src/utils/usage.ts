@@ -13,13 +13,6 @@ export const usageWindowShortLabelKeys: Record<UsageWindowKey, TranslationKeys> 
   monthly: 'com_nav_usage_monthly_short',
 };
 
-const usdFormatter = new Intl.NumberFormat(undefined, {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
 const resetFormatter = new Intl.DateTimeFormat(undefined, {
   weekday: 'short',
   day: 'numeric',
@@ -27,8 +20,6 @@ const resetFormatter = new Intl.DateTimeFormat(undefined, {
   hour: '2-digit',
   minute: '2-digit',
 });
-
-export const formatUsd = (amount: number): string => usdFormatter.format(amount);
 
 export const formatResetAt = (iso: string): string => resetFormatter.format(new Date(iso));
 
