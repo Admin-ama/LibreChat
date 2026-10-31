@@ -27,7 +27,7 @@ function WindowMeter({ window, enforced }: { window: TUsageWindow; enforced: boo
   const percent = percentOf(window);
   const blocked = enforced && isBlocked(window);
   const fill = blocked ? 'bg-red-500' : 'bg-green-600';
-  const countdown = blocked ? countdownOf(window) : null;
+  const countdown = countdownOf(window);
 
   return (
     <span className="flex items-center gap-1.5">
@@ -47,9 +47,14 @@ function WindowMeter({ window, enforced }: { window: TUsageWindow; enforced: boo
       <span className={cn('tabular-nums', blocked && 'font-medium text-red-500')}>
         {Math.round(percent)}%
       </span>
-      {blocked && (
-        <span className="flex items-center gap-0.5 font-medium text-red-500">
-          <Lock className="size-3" aria-hidden="true" />
+      {countdown != null && (
+        <span
+          className={cn(
+            'flex items-center gap-0.5 tabular-nums',
+            blocked ? 'font-medium text-red-500' : 'text-text-tertiary',
+          )}
+        >
+          {blocked && <Lock className="size-3" aria-hidden="true" />}
           {countdown}
         </span>
       )}
