@@ -102,7 +102,11 @@ export function summarizeUsage(
       limitCredits != null && spentCredits >= limitCredits
         ? findResetAt(entries, startIndex, spentCredits, limitCredits, durationMs)
         : null;
-    return { key, spent: toUsd(spentCredits), limit, resetAt };
+    const releaseAt =
+      startIndex < entries.length
+        ? new Date(entries[startIndex].createdAt.getTime() + durationMs).toISOString()
+        : null;
+    return { key, spent: toUsd(spentCredits), limit, resetAt, releaseAt };
   });
   return { enabled: limits.enabled, windows };
 }

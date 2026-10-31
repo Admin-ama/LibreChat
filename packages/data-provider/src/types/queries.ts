@@ -311,6 +311,8 @@ export type TUsageWindow = {
   limit: number | null;
   /** ISO date when enough spend leaves the window to drop below the cap; `null` when under it */
   resetAt: string | null;
+  /** ISO date when the oldest spend in the window rolls out; `null` when nothing was spent */
+  releaseAt?: string | null;
 };
 
 export type TUsageSummary = {

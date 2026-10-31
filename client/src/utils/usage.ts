@@ -36,3 +36,23 @@ export const usagePercent = (spent: number, limit: number | null): number | null
   }
   return Math.min(100, Math.max(0, (spent / limit) * 100));
 };
+
+/** Compact time left until `iso`, e.g. "4h 45m", "2d 10h", "12m"; `null` when past or missing. */
+export const formatCountdown = (
+  iso: string | null | undefined,
+  now: number = Date.now(),
+): string | null => {
+  if (iso == null) {
+    return null;
+  }
+  const minutes = Math.ceil((new Date(iso).getTime() - now) / 60000);
+  if (minutes <= 0) {
+    return null;
+  }
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  if (days > 0) {
+    return `${days}d ${hours}h`;
+  }
+  return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
+};

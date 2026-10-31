@@ -4,18 +4,21 @@ import ReactMarkdown from 'react-markdown';
 import { Constants } from 'librechat-data-provider';
 import type { TStartupConfig } from 'librechat-data-provider';
 import { useGetStartupConfig } from '~/data-provider';
+import { UsageStatus } from '~/components/Nav/Usage';
 import { useLocalize } from '~/hooks';
 
 type FooterProps = {
   className?: string;
   startupConfig?: FooterStartupConfig | null;
+  /** Prepend the signed-in user's rolling usage meter (chat view only). */
+  showUsage?: boolean;
 };
 
 type FooterStartupConfig = Pick<Partial<TStartupConfig>, 'analyticsGtmId' | 'customFooter'> & {
   interface?: Pick<NonNullable<TStartupConfig['interface']>, 'privacyPolicy' | 'termsOfService'>;
 };
 
-function Footer({ className, startupConfig }: FooterProps) {
+function Footer({ className, startupConfig, showUsage = false }: FooterProps) {
   const shouldFetchConfig = startupConfig === undefined;
   const { data: fetchedConfig } = useGetStartupConfig({ enabled: shouldFetchConfig });
   const config = shouldFetchConfig ? fetchedConfig : startupConfig;
@@ -79,9 +82,12 @@ function Footer({ className, startupConfig }: FooterProps) {
     </React.Fragment>
   ));
 
-  const footerElements = [...mainContentRender, privacyPolicyRender, termsOfServiceRender].filter(
-    Boolean,
-  );
+  const footerElements = [
+    showUsage && <UsageStatus key="usage-status" />,
+    ...mainContentRender,
+    privacyPolicyRender,
+    termsOfServiceRender,
+  ].filter(Boolean);
 
   return (
     <div className="relative w-full">

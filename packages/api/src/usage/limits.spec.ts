@@ -36,10 +36,12 @@ describe('summarizeUsage', () => {
       { createdAt: hoursAgo(1), credits: usd(0.5) },
     ];
     const { windows } = summarizeUsage(entries, limits, now);
+    const releaseAt = (h: number, windowHours: number) =>
+      new Date(hoursAgo(h).getTime() + windowHours * HOUR).toISOString();
     expect(windows).toEqual([
-      { key: 'fiveHour', spent: 0.5, limit: 2, resetAt: null },
-      { key: 'weekly', spent: 1.5, limit: 5, resetAt: null },
-      { key: 'monthly', spent: 4.5, limit: 10, resetAt: null },
+      { key: 'fiveHour', spent: 0.5, limit: 2, resetAt: null, releaseAt: releaseAt(1, 5) },
+      { key: 'weekly', spent: 1.5, limit: 5, resetAt: null, releaseAt: releaseAt(48, 168) },
+      { key: 'monthly', spent: 4.5, limit: 10, resetAt: null, releaseAt: releaseAt(480, 720) },
     ]);
   });
 
@@ -57,7 +59,7 @@ describe('summarizeUsage', () => {
   it('never resolves a reset for a zero cap', () => {
     const zero = getUsageLimits(config({ enabled: true, monthly: 0 }));
     const monthly = summarizeUsage([], zero, now).windows[2];
-    expect(monthly).toEqual({ key: 'monthly', spent: 0, limit: 0, resetAt: null });
+    expect(monthly).toEqual({ key: 'monthly', spent: 0, limit: 0, resetAt: null, releaseAt: null });
   });
 });
 
