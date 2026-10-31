@@ -15,9 +15,10 @@ import {
 } from 'lucide-react';
 import { ArchivedChatsModal } from '~/components/Nav/SettingsTabs/General/ArchivedChatsModal';
 import { MyFilesModal } from '~/components/Chat/Input/Files/MyFilesModal';
-import { useGetStartupConfig, useGetUserBalance } from '~/data-provider';
+import { useGetStartupConfig, useGetUserBalance, useGetUsageQuery } from '~/data-provider';
 import { useAuthContext } from '~/hooks/AuthContext';
 import { useLocalize } from '~/hooks';
+import { UsageMeter } from './Usage';
 import Settings from './Settings';
 import store from '~/store';
 
@@ -99,6 +100,7 @@ function AccountSettings({ collapsed = false }: { collapsed?: boolean }) {
   const balanceQuery = useGetUserBalance({
     enabled: !!isAuthenticated && startupConfig?.balance?.enabled,
   });
+  const usageQuery = useGetUsageQuery({ enabled: !!isAuthenticated });
   const [showSettings, setShowSettings] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
   const setShowShortcutsDialog = useSetRecoilState(store.showShortcutsDialog);
@@ -151,6 +153,12 @@ function AccountSettings({ collapsed = false }: { collapsed?: boolean }) {
               {localize('com_nav_balance')}:{' '}
               {new Intl.NumberFormat().format(Math.round(balanceQuery.data.tokenCredits))}
             </div>
+            <DropdownMenuSeparator />
+          </>
+        )}
+        {usageQuery.data?.enabled === true && (
+          <>
+            <UsageMeter windows={usageQuery.data.windows} />
             <DropdownMenuSeparator />
           </>
         )}

@@ -461,6 +461,7 @@ export const adminUserSearch = (query: string, limit = 20) =>
   `${BASE_URL}/api/admin/users/search?q=${encodeURIComponent(query)}&limit=${limit}`;
 export const adminUserBalance = (userId: string) =>
   `${BASE_URL}/api/admin/users/${encodeURIComponent(userId)}/balance`;
+export const usage = () => `${BASE_URL}/api/usage`;
 export const getRole = (roleName: string) => `${roles()}/${encodeURIComponent(roleName)}`;
 export const updatePromptPermissions = (roleName: string) => `${getRole(roleName)}/prompts`;
 export const updateMemoryPermissions = (roleName: string) => `${getRole(roleName)}/memories`;

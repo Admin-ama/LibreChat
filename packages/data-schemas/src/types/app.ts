@@ -93,6 +93,8 @@ export interface AppConfig {
   balance?: Partial<TCustomConfig['balance']>;
   /** Transactions configuration */
   transactions?: TCustomConfig['transactions'];
+  /** Rolling spend window limits (5h/weekly/monthly, USD) */
+  usageLimits?: TCustomConfig['usageLimits'];
   /** Speech configuration */
   speech?: TCustomConfig['speech'];
   /** MCP server configuration */

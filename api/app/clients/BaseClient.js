@@ -4,6 +4,7 @@ const { logger } = require('@librechat/data-schemas');
 const {
   countTokens,
   checkBalance,
+  checkUsageLimits,
   getBalanceConfig,
   buildMessageFiles,
   sanitizeFileForTransmit,
@@ -681,11 +682,17 @@ class BaseClient {
       }
     }
 
+    const supportsSpendChecks =
+      supportsBalanceCheck[this.options.endpointType ?? this.options.endpoint];
+    if (supportsSpendChecks) {
+      await checkUsageLimits(
+        { req: this.options.req, res: this.options.res, user: this.user, appConfig },
+        { logViolation, getUserUsageEntries: db.getUserUsageEntries },
+      );
+    }
+
     const balanceConfig = getBalanceConfig(appConfig);
-    if (
-      balanceConfig?.enabled &&
-      supportsBalanceCheck[this.options.endpointType ?? this.options.endpoint]
-    ) {
+    if (balanceConfig?.enabled && supportsSpendChecks) {
       await checkBalance(
         {
           req: this.options.req,

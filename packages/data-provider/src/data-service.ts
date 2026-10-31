@@ -1215,6 +1215,10 @@ export function getAdminUserBalance(userId: string): Promise<q.TAdminUserBalance
   return request.get(endpoints.adminUserBalance(userId));
 }
 
+export function getUsage(): Promise<q.TUsageSummary> {
+  return request.get(endpoints.usage());
+}
+
 export function updateAdminUserBalance(
   userId: string,
   balance: q.TAdminUserBalanceUpdate,

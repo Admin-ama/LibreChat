@@ -136,6 +136,7 @@ export const AppService = async (params?: {
     startBalance: startBalance ? parseInt(startBalance, 10) : undefined,
   };
   const transactions = config.transactions ?? configDefaults.transactions;
+  const usageLimits = config.usageLimits;
   const imageOutputType = config?.imageOutputType ?? configDefaults.imageOutputType;
 
   process.env.CDN_PROVIDER = fileStrategy;
@@ -166,6 +167,7 @@ export const AppService = async (params?: {
     fileStrategy,
     registration,
     transactions,
+    usageLimits,
     filteredTools,
     includedTools,
     langfuse,

@@ -27,6 +27,7 @@ const namespaces = {
   [ViolationTypes.MESSAGE_LIMIT]: violationCache(ViolationTypes.MESSAGE_LIMIT),
   [ViolationTypes.REGISTRATIONS]: violationCache(ViolationTypes.REGISTRATIONS),
   [ViolationTypes.TOKEN_BALANCE]: violationCache(ViolationTypes.TOKEN_BALANCE),
+  [ViolationTypes.USAGE_LIMIT]: violationCache(ViolationTypes.USAGE_LIMIT),
   [ViolationTypes.TTS_LIMIT]: violationCache(ViolationTypes.TTS_LIMIT),
   [ViolationTypes.STT_LIMIT]: violationCache(ViolationTypes.STT_LIMIT),
   [ViolationTypes.CONVO_ACCESS]: violationCache(ViolationTypes.CONVO_ACCESS),

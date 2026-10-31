@@ -1,5 +1,6 @@
 import type { InfiniteData } from '@tanstack/react-query';
 import type { RefillIntervalUnit } from '../balance';
+import type { UsageWindowKey } from '../config';
 import type * as p from '../accessPermissions';
 import type * as a from '../types/agents';
 import type * as s from '../schemas';
@@ -301,3 +302,47 @@ export type TAdminUserBalance = {
 };
 
 export type TAdminUserBalanceUpdate = Omit<TAdminUserBalance, 'userId'>;
+
+export type TUsageWindow = {
+  key: UsageWindowKey;
+  /** USD spent inside the rolling window */
+  spent: number;
+  /** USD cap, `null` when the window is uncapped */
+  limit: number | null;
+  /** ISO date when enough spend leaves the window to drop below the cap; `null` when under it */
+  resetAt: string | null;
+};
+
+export type TUsageSummary = {
+  enabled: boolean;
+  windows: TUsageWindow[];
+};
+
+export type TAdminUsageUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  lastUsedAt: string | null;
+} & TUsageSummary;
+
+export type TAdminUsageListResponse = {
+  users: TAdminUsageUser[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type TUsageBreakdownRow = {
+  /** Model name or `YYYY-MM-DD` day bucket */
+  key: string;
+  spent: number;
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+};
+
+export type TAdminUsageDetail = TAdminUsageUser & {
+  byModel: TUsageBreakdownRow[];
+  byDay: TUsageBreakdownRow[];
+};

@@ -1,0 +1,38 @@
+import type { UsageWindowKey } from 'librechat-data-provider';
+import type { TranslationKeys } from '~/hooks';
+
+export const usageWindowLabelKeys: Record<UsageWindowKey, TranslationKeys> = {
+  fiveHour: 'com_nav_usage_five_hour',
+  weekly: 'com_nav_usage_weekly',
+  monthly: 'com_nav_usage_monthly',
+};
+
+const usdFormatter = new Intl.NumberFormat(undefined, {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+const resetFormatter = new Intl.DateTimeFormat(undefined, {
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+export const formatUsd = (amount: number): string => usdFormatter.format(amount);
+
+export const formatResetAt = (iso: string): string => resetFormatter.format(new Date(iso));
+
+/** Percentage of the cap used, clamped to 0–100; `null` when uncapped. */
+export const usagePercent = (spent: number, limit: number | null): number | null => {
+  if (limit == null) {
+    return null;
+  }
+  if (limit <= 0) {
+    return 100;
+  }
+  return Math.min(100, Math.max(0, (spent / limit) * 100));
+};

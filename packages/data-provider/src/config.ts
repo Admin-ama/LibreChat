@@ -1519,6 +1519,7 @@ export const interfaceSchema = z
 export type TInterfaceConfig = z.infer<typeof interfaceSchema>;
 export type TBalanceConfig = z.infer<typeof balanceSchema>;
 export type TTransactionsConfig = z.infer<typeof transactionsSchema>;
+export type TUsageLimitsConfig = z.infer<typeof usageLimitsSchema>;
 
 export const turnstileOptionsSchema = z
   .object({
@@ -1811,6 +1812,25 @@ export const transactionsSchema = z.object({
   enabled: z.boolean().optional().default(true),
 });
 
+/** Rolling spend windows (OpenCode-style); amounts are USD, `null`/absent means no cap. */
+export const USAGE_WINDOWS = [
+  { key: 'fiveHour', durationMs: 5 * 60 * 60 * 1000 },
+  { key: 'weekly', durationMs: 7 * 24 * 60 * 60 * 1000 },
+  { key: 'monthly', durationMs: 30 * 24 * 60 * 60 * 1000 },
+] as const;
+
+export type UsageWindowKey = (typeof USAGE_WINDOWS)[number]['key'];
+
+/** 1 USD expressed in transaction `tokenValue` units. */
+export const CREDITS_PER_USD = 1_000_000;
+
+export const usageLimitsSchema = z.object({
+  enabled: z.boolean().optional().default(false),
+  fiveHour: z.number().nonnegative().nullable().optional(),
+  weekly: z.number().nonnegative().nullable().optional(),
+  monthly: z.number().nonnegative().nullable().optional(),
+});
+
 export const DEFAULT_MEMORY_MAX_INPUT_TOKENS = 12000;
 
 export const memorySchema = z.object({
@@ -1985,6 +2005,7 @@ export const configSchema = z.object({
     .default({ socialLogins: defaultSocialLogins }),
   balance: balanceSchema.optional(),
   transactions: transactionsSchema.optional(),
+  usageLimits: usageLimitsSchema.optional(),
   speech: z
     .object({
       tts: ttsSchema.optional(),
@@ -2517,6 +2538,10 @@ export enum ViolationTypes {
    * Token Limit Violation.
    */
   TOKEN_BALANCE = 'token_balance',
+  /**
+   * Rolling usage window (5h/weekly/monthly) spend cap reached.
+   */
+  USAGE_LIMIT = 'usage_limit',
   /**
    * An issued ban.
    */

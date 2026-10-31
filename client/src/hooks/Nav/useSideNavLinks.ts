@@ -8,7 +8,6 @@ import {
   ScrollText,
   ArrowRightToLine,
   SlidersHorizontal,
-  WalletCards,
 } from 'lucide-react';
 import {
   Permissions,
@@ -17,7 +16,6 @@ import {
   isParamEndpoint,
   isAgentsEndpoint,
   isAssistantsEndpoint,
-  SystemRoles,
 } from 'librechat-data-provider';
 import type { TInterfaceConfig, TEndpointsConfig } from 'librechat-data-provider';
 import type { NavLink } from '~/common';
@@ -26,7 +24,6 @@ import {
   useMCPServerManager,
   useGetAgentsConfig,
   useHasAccess,
-  useAuthContext,
 } from '~/hooks';
 import MCPBuilderPanel from '~/components/SidePanel/MCPBuilder/MCPBuilderPanel';
 import AgentPanelSwitch from '~/components/SidePanel/Agents/AgentPanelSwitch';
@@ -37,7 +34,6 @@ import { MemoryPanel } from '~/components/SidePanel/Memories';
 import FilesPanel from '~/components/SidePanel/Files/Panel';
 import { PromptsAccordion } from '~/components/Prompts';
 import { SkillsAccordion } from '~/components/Skills';
-import BalancePanel from '~/components/SidePanel/Balance/BalancePanel';
 
 export default function useSideNavLinks({
   hidePanel,
@@ -56,7 +52,6 @@ export default function useSideNavLinks({
   endpointsConfig: TEndpointsConfig;
   includeHidePanel?: boolean;
 }) {
-  const { user } = useAuthContext();
   const hasAccessToPrompts = useHasAccess({
     permissionType: PermissionTypes.PROMPTS,
     permission: Permissions.USE,
@@ -175,16 +170,6 @@ export default function useSideNavLinks({
       });
     }
 
-    if (user?.role === SystemRoles.ADMIN) {
-      links.push({
-        title: 'com_admin_balance_title',
-        label: '',
-        icon: WalletCards,
-        id: 'admin-balance',
-        Component: BalancePanel,
-      });
-    }
-
     links.push({
       title: 'com_sidepanel_attach_files',
       label: '',
@@ -246,7 +231,6 @@ export default function useSideNavLinks({
     interfaceConfig.parameters,
     endpointType,
     hasAccessToBookmarks,
-    user?.role,
     availableMCPServers,
     hasAccessToUseMCPSettings,
     hasAccessToCreateMCP,
