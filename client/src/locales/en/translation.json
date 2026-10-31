@@ -651,6 +651,7 @@
   "com_nav_usage_monthly": "Monthly limit",
   "com_nav_usage_monthly_short": "Month",
   "com_nav_usage_no_reset": "when an administrator raises it",
+  "com_nav_usage_refresh": "Refresh usage",
   "com_nav_usage_resets": "Available again: {{0}}",
   "com_nav_usage_unlimited": "no limit",
   "com_nav_usage_used": "Used",

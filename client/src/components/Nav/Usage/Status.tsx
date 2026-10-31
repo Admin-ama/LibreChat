@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Lock } from 'lucide-react';
+import { Lock, RefreshCw } from 'lucide-react';
 import { useRecoilValue } from 'recoil';
 import type { TUsageWindow } from 'librechat-data-provider';
 import {
@@ -70,7 +70,7 @@ function WindowMeter({ window, enforced }: { window: TUsageWindow; enforced: boo
 export default function UsageStatus() {
   const localize = useLocalize();
   const { isAuthenticated } = useAuthContext();
-  const { data, refetch } = useGetUsageQuery({ enabled: !!isAuthenticated });
+  const { data, refetch, isFetching } = useGetUsageQuery({ enabled: !!isAuthenticated });
   const submitting = useRecoilValue(store.anySubmittingSelector);
   const wasSubmitting = useRef(submitting);
 
@@ -100,15 +100,22 @@ export default function UsageStatus() {
   ].join('\n');
 
   return (
-    <div
-      className="flex items-center gap-3 whitespace-nowrap text-xs text-text-secondary"
-      title={tooltip}
-      aria-label={tooltip}
-      role="status"
-    >
-      {capped.map((w) => (
-        <WindowMeter key={w.key} window={w} enforced={data.enabled} />
-      ))}
+    <div className="flex items-center gap-2 whitespace-nowrap text-xs text-text-secondary">
+      <div className="flex items-center gap-3" title={tooltip} aria-label={tooltip} role="status">
+        {capped.map((w) => (
+          <WindowMeter key={w.key} window={w} enforced={data.enabled} />
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={() => refetch()}
+        disabled={isFetching}
+        title={localize('com_nav_usage_refresh')}
+        aria-label={localize('com_nav_usage_refresh')}
+        className="rounded p-0.5 text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-default"
+      >
+        <RefreshCw className={cn('size-3', isFetching && 'animate-spin')} aria-hidden="true" />
+      </button>
     </div>
   );
 }

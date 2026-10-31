@@ -526,6 +526,7 @@
   "com_nav_usage_monthly": "Límite mensual",
   "com_nav_usage_monthly_short": "Mes",
   "com_nav_usage_no_reset": "cuando un administrador lo aumente",
+  "com_nav_usage_refresh": "Actualizar consumo",
   "com_nav_usage_resets": "Disponible nuevamente: {{0}}",
   "com_nav_usage_unlimited": "sin límite",
   "com_nav_usage_used": "Usado",
