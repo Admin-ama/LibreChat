@@ -2886,3 +2886,45 @@ describe('Long-Context Premium Cache Pricing', () => {
 
 // Cross-package sync validation tests (tokens.ts ↔ tx.ts) moved to
 // packages/api tests since they require maxTokensMap from @librechat/api.
+
+describe('OpenRouter-routed model pricing', () => {
+  const openRouterModels = [
+    'openai/gpt-6-luna',
+    'openai/gpt-5.6-luna',
+    'anthropic/claude-haiku-5.5',
+    'anthropic/claude-sonnet-5.5',
+    'qwen/qwen3.6-35b-a3b',
+    'nvidia/nemotron-3-super-120b-a12b',
+  ];
+
+  it.each(openRouterModels)('should resolve %s to its own prefixed key', (model) => {
+    expect(getValueKey(model)).toBe(model);
+    expect(getMultiplier({ model, tokenType: 'prompt' })).toBe(tokenValues[model].prompt);
+    expect(getMultiplier({ model, tokenType: 'completion' })).toBe(tokenValues[model].completion);
+    expect(getCacheMultiplier({ model, cacheType: 'read' })).toBe(cacheTokenValues[model].read);
+    expect(getCacheMultiplier({ model, cacheType: 'write' })).toBe(cacheTokenValues[model].write);
+  });
+
+  it('should keep generic keys for unprefixed model names', () => {
+    expect(getValueKey('gpt-5.6-luna')).toBe('gpt-5.6-luna');
+    expect(getValueKey('claude-sonnet-5.5')).toBe('claude-sonnet-5');
+  });
+
+  it('should apply the long-context tier for claude-haiku-5.5 above its threshold', () => {
+    const model = 'anthropic/claude-haiku-5.5';
+    const { threshold, prompt, completion } = premiumTokenValues[model];
+    const { read } = premiumCacheTokenValues[model];
+    expect(getMultiplier({ model, tokenType: 'prompt', inputTokenCount: threshold })).toBe(
+      tokenValues[model].prompt,
+    );
+    expect(getMultiplier({ model, tokenType: 'prompt', inputTokenCount: threshold + 1 })).toBe(
+      prompt,
+    );
+    expect(getMultiplier({ model, tokenType: 'completion', inputTokenCount: threshold + 1 })).toBe(
+      completion,
+    );
+    expect(getCacheMultiplier({ model, cacheType: 'read', inputTokenCount: threshold + 1 })).toBe(
+      read,
+    );
+  });
+});

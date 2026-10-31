@@ -293,6 +293,14 @@ export const tokenValues: Record<string, { prompt: number; completion: number }>
     'qwen3-coder-plus': { prompt: 1, completion: 5 },
     'qwen3-coder-flash': { prompt: 0.3, completion: 1.5 },
     'qwen3-next-80b-a3b': { prompt: 0.1, completion: 0.8 },
+    // AMA: OpenRouter-routed models (source: https://openrouter.ai/api/v1/models, 2026-10-31).
+    // Prefixed keys win as exact matches over the generic provider keys above.
+    'openai/gpt-6-luna': { prompt: 0.1, completion: 0.5 },
+    'openai/gpt-5.6-luna': { prompt: 0.2, completion: 1.2 },
+    'anthropic/claude-haiku-5.5': { prompt: 0.1, completion: 0.5 },
+    'anthropic/claude-sonnet-5.5': { prompt: 2, completion: 10 },
+    'qwen/qwen3.6-35b-a3b': { prompt: 0.1, completion: 0.9 },
+    'nvidia/nemotron-3-super-120b-a12b': { prompt: 0.3, completion: 2.4 },
   },
   bedrockValues,
 );
@@ -376,6 +384,13 @@ export const cacheTokenValues: Record<string, { write: number; read: number }> =
   'gemini-3.5-flash-lite': { write: 0.3, read: 0.03 },
   // Gemini 3.6 Flash - cache write: $1.50/1M, cache read: $0.15/1M
   'gemini-3.6-flash': { write: 1.5, read: 0.15 },
+  // AMA: OpenRouter-routed models (5-minute cache write rate)
+  'openai/gpt-6-luna': { write: 0.125, read: 0.01 },
+  'openai/gpt-5.6-luna': { write: 0.25, read: 0.02 },
+  'anthropic/claude-haiku-5.5': { write: 0.125, read: 0.01 },
+  'anthropic/claude-sonnet-5.5': { write: 2.5, read: 0.1 },
+  'qwen/qwen3.6-35b-a3b': { write: 0.1, read: 0.025 },
+  'nvidia/nemotron-3-super-120b-a12b': { write: 0.3, read: 0.15 },
 };
 
 /**
@@ -393,6 +408,10 @@ export const premiumTokenValues: Record<
   'gpt-5.6': { threshold: 272000, prompt: 10, completion: 45 },
   'gpt-5.6-terra': { threshold: 272000, prompt: 5, completion: 22.5 },
   'gpt-5.6-luna': { threshold: 272000, prompt: 2, completion: 9 },
+  // AMA: OpenRouter-routed models
+  'openai/gpt-6-luna': { threshold: 272000, prompt: 0.2, completion: 0.75 },
+  'openai/gpt-5.6-luna': { threshold: 272000, prompt: 0.4, completion: 1.8 },
+  'anthropic/claude-haiku-5.5': { threshold: 100000, prompt: 0.5, completion: 2.5 },
 };
 
 /**
@@ -410,6 +429,10 @@ export const premiumCacheTokenValues: Record<
   'gpt-5.6': { threshold: 272000, write: 12.5, read: 1 },
   'gpt-5.6-terra': { threshold: 272000, write: 6.25, read: 0.5 },
   'gpt-5.6-luna': { threshold: 272000, write: 2.5, read: 0.2 },
+  // AMA: OpenRouter-routed models
+  'openai/gpt-6-luna': { threshold: 272000, write: 0.25, read: 0.02 },
+  'openai/gpt-5.6-luna': { threshold: 272000, write: 0.5, read: 0.04 },
+  'anthropic/claude-haiku-5.5': { threshold: 100000, write: 0.625, read: 0.05 },
 };
 
 export function createTxMethods(
