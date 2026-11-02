@@ -9,12 +9,13 @@ import { useChatContext } from '~/Providers';
 import { useLocalize } from '~/hooks';
 
 /**
- * Subtle project indicator shown on a project-scoped new-chat landing.
- * Clicking the chip switches the project (searchable combobox); the trailing
+ * Subtle project indicator shown on every new-chat landing.
+ * Clicking the chip picks or switches the project (searchable combobox); the trailing
  * `×` removes the project scope. Both update the conversation draft and the
  * `?projectId` search param in place, so the typed message and model are kept.
+ * Without a project it shows a "Select project" picker, hidden when the user has no projects.
  */
-export default function ProjectLandingChip({ project }: { project: TChatProject }) {
+export default function ProjectLandingChip({ project }: { project?: TChatProject | null }) {
   const localize = useLocalize();
   const { conversation, setConversation } = useChatContext();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -52,12 +53,16 @@ export default function ProjectLandingChip({ project }: { project: TChatProject 
     [conversation, setConversation, searchParams, setSearchParams],
   );
 
+  if (!project && projects.length === 0) {
+    return null;
+  }
+
   return (
     <div className="group mb-2.5 flex items-center gap-1 px-1">
       <ControlCombobox
         selectId="project-landing-select"
-        selectedValue={project._id}
-        displayValue={project.name}
+        selectedValue={project?._id ?? ''}
+        displayValue={project?.name ?? localize('com_ui_select_project')}
         items={items}
         setValue={(value) => {
           if (value) {
@@ -73,19 +78,21 @@ export default function ProjectLandingChip({ project }: { project: TChatProject 
         containerClassName="w-auto px-0"
         className="h-8 w-auto min-w-[11rem] gap-1.5 rounded-full px-2.5 text-sm font-medium text-text-secondary hover:text-text-primary"
       />
-      <TooltipAnchor
-        description={localize('com_ui_remove_from_project')}
-        render={
-          <button
-            type="button"
-            aria-label={localize('com_ui_remove_from_project')}
-            onClick={() => applyProject(null)}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-text-secondary opacity-0 outline-none transition-all hover:bg-surface-hover hover:text-text-primary focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring-primary group-hover:opacity-100"
-          >
-            <X className="h-3.5 w-3.5" aria-hidden="true" />
-          </button>
-        }
-      />
+      {project && (
+        <TooltipAnchor
+          description={localize('com_ui_remove_from_project')}
+          render={
+            <button
+              type="button"
+              aria-label={localize('com_ui_remove_from_project')}
+              onClick={() => applyProject(null)}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-text-secondary opacity-0 outline-none transition-all hover:bg-surface-hover hover:text-text-primary focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring-primary group-hover:opacity-100"
+            >
+              <X className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          }
+        />
+      )}
     </div>
   );
 }

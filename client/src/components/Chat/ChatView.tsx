@@ -142,7 +142,7 @@ function ChatView({ index = 0, project }: { index?: number; project?: TChatProje
                       isLandingPage && 'max-w-3xl transition-all duration-200 xl:max-w-4xl',
                     )}
                   >
-                    {isProjectLandingPage && project && <ProjectLandingChip project={project} />}
+                    {isLandingPage && <ProjectLandingChip project={project} />}
                     {isLandingPage && <ConversationStarters />}
                     <ChatForm index={index} placeholder={chatFormPlaceholder} />
                     {!isLandingPage && <Footer showUsage />}
