@@ -1,4 +1,4 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo, useMemo, useRef, useEffect } from 'react';
 import * as Ariakit from '@ariakit/react';
 import { ChevronDown } from 'lucide-react';
 import { PermissionTypes, Permissions } from 'librechat-data-provider';
@@ -55,6 +55,32 @@ function MCPSelectContent({ statusOnly = false }: MCPSelectProps) {
     }
     return localize('com_ui_x_selected', { 0: selectedCount });
   }, [statusOnly, selectedServers, manager?.selectableServers, manager?.mcpValues, localize]);
+
+  /** Servers that need nothing from the user (no OAuth, no credentials) only connect on first use;
+   *  in status-only mode connect them once so the menu shows their real state. */
+  const autoConnected = useRef(new Set<string>());
+  useEffect(() => {
+    if (!statusOnly || !manager?.connectionStatus) {
+      return;
+    }
+    for (const { serverName } of manager.selectableServers ?? []) {
+      const status = manager.connectionStatus[serverName];
+      if (
+        !status ||
+        status.connectionState !== 'disconnected' ||
+        status.requiresOAuth ||
+        autoConnected.current.has(serverName)
+      ) {
+        continue;
+      }
+      const { hasCustomUserVars, isInitializing } = manager.getServerStatusIconProps(serverName);
+      if (hasCustomUserVars || isInitializing) {
+        continue;
+      }
+      autoConnected.current.add(serverName);
+      manager.initializeServer(serverName, false);
+    }
+  }, [statusOnly, manager]);
 
   if (!manager) {
     return null;
