@@ -496,6 +496,40 @@ describe('tests for the new helper functions used by the MCP connection status e
       });
     });
 
+    it('should report a credential-based server as connected once its user vars are saved', async () => {
+      const config = { ...mockConfig, customUserVars: { TOKEN: { title: 'Token' } } };
+      const result = await getServerConnectionStatus(
+        mockUserId,
+        mockServerName,
+        config,
+        new Map(),
+        new Map(),
+        new Set(),
+        { userMCPAuthMap: { [`mcp_${mockServerName}`]: { TOKEN: 'abc' } } },
+      );
+
+      expect(result).toEqual({
+        requiresOAuth: false,
+        connectionState: 'connected',
+        authorizationState: 'not_required',
+      });
+    });
+
+    it('should keep a credential-based server disconnected while its user vars are missing', async () => {
+      const config = { ...mockConfig, customUserVars: { TOKEN: { title: 'Token' } } };
+      const result = await getServerConnectionStatus(
+        mockUserId,
+        mockServerName,
+        config,
+        new Map(),
+        new Map(),
+        new Set(),
+        { userMCPAuthMap: { [`mcp_${mockServerName}`]: { TOKEN: '  ' } } },
+      );
+
+      expect(result.connectionState).toBe('disconnected');
+    });
+
     it('should fallback to user connection state when app connection not available', async () => {
       const appConnections = new Map();
       const userConnections = new Map([

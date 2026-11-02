@@ -1413,6 +1413,22 @@ async function getServerConnectionStatus(
     }
   }
 
+  /** Credential-based servers (customUserVars) connect lazily on first use; once the user has saved
+   *  every required value they are ready, so report them like OAuth servers with durable tokens. */
+  if (
+    finalConnectionState === 'disconnected' &&
+    !requiresOAuth &&
+    config.customUserVars &&
+    Object.keys(config.customUserVars).length > 0
+  ) {
+    const userMCPAuthMap =
+      runtimeContext.userMCPAuthMap ?? (await runtimeContext.loadUserMCPAuthMap?.());
+    const customUserVars = getServerCustomUserVars(userMCPAuthMap, serverName);
+    if (getMissingCustomUserVars(config, customUserVars).length === 0) {
+      finalConnectionState = 'connected';
+    }
+  }
+
   return {
     requiresOAuth,
     connectionState: finalConnectionState,
