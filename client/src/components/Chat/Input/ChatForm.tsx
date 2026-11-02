@@ -656,6 +656,7 @@ const ChatForm = memo(function ChatForm({
                     !isAgentsEndpoint(endpoint) &&
                     !isAssistantsEndpoint(endpoint)
                   }
+                  showMCPStatus={!!endpoint && !hideBadgeRow && isAgentsEndpoint(endpoint)}
                   isSubmitting={isSubmitting}
                   conversationId={conversationId}
                   specName={conversation?.spec}

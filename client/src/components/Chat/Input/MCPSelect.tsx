@@ -10,7 +10,13 @@ import { useHasAccess, useLocalize } from '~/hooks';
 import { useBadgeRowContext } from '~/Providers';
 import { cn } from '~/utils';
 
-function MCPSelectContent() {
+interface MCPSelectProps {
+  /** Show every server with its connection status instead of a selection (agents have fixed tools).
+   *  Clicking a disconnected server connects it, or opens its config when it needs user credentials. */
+  statusOnly?: boolean;
+}
+
+function MCPSelectContent({ statusOnly = false }: MCPSelectProps) {
   const localize = useLocalize();
   const context = useBadgeRowContext();
   const { conversationId, storageContextKey, mcpServerManager: manager } = context ?? {};
@@ -19,14 +25,24 @@ function MCPSelectContent() {
   const isOpen = menuStore.useState('open');
 
   const selectedServers = useMemo(() => {
+    if (statusOnly) {
+      return (
+        manager?.selectableServers?.filter(
+          (s) => manager.connectionStatus?.[s.serverName]?.connectionState === 'connected',
+        ) ?? []
+      );
+    }
     if (!manager?.mcpValues || manager.mcpValues.length === 0) {
       return [];
     }
     const selectedSet = new Set(manager.mcpValues);
     return manager.selectableServers?.filter((s) => selectedSet.has(s.serverName));
-  }, [manager?.selectableServers, manager?.mcpValues]);
+  }, [statusOnly, manager?.selectableServers, manager?.mcpValues, manager?.connectionStatus]);
 
   const displayText = useMemo(() => {
+    if (statusOnly) {
+      return `${localize('com_ui_mcp_servers')} ${selectedServers?.length ?? 0}/${manager?.selectableServers?.length ?? 0}`;
+    }
     const selectedCount = manager?.mcpValues?.length ?? 0;
     if (selectedCount === 0) {
       return null;
@@ -38,7 +54,7 @@ function MCPSelectContent() {
       return server?.config?.title || manager?.mcpValues?.[0];
     }
     return localize('com_ui_x_selected', { 0: selectedCount });
-  }, [manager?.selectableServers, manager?.mcpValues, localize]);
+  }, [statusOnly, selectedServers, manager?.selectableServers, manager?.mcpValues, localize]);
 
   if (!manager) {
     return null;
@@ -52,13 +68,28 @@ function MCPSelectContent() {
     connectionStatus,
     selectableServers,
     getConfigDialogProps,
+    initializeServer,
     toggleServerSelection,
     getServerStatusIconProps,
   } = manager;
 
-  if (!isPinned && mcpValues?.length === 0) {
+  if (!statusOnly && !isPinned && mcpValues?.length === 0) {
     return null;
   }
+
+  /** Same behavior as the MCP settings panel card: ask for credentials first when the server needs them. */
+  const connectServer = (serverName: string) => {
+    const { serverStatus, onConfigClick, isInitializing, hasCustomUserVars } =
+      getServerStatusIconProps(serverName);
+    if (isInitializing || serverStatus?.connectionState === 'connected') {
+      return;
+    }
+    if (hasCustomUserVars) {
+      onConfigClick({ stopPropagation: () => {}, preventDefault: () => {} } as React.MouseEvent);
+      return;
+    }
+    initializeServer(serverName);
+  };
 
   const configDialogProps = getConfigDialogProps();
 
@@ -112,11 +143,12 @@ function MCPSelectContent() {
               <MCPServerMenuItem
                 key={server.serverName}
                 server={server}
-                isSelected={mcpValues?.includes(server.serverName) ?? false}
+                isSelected={!statusOnly && (mcpValues?.includes(server.serverName) ?? false)}
                 connectionStatus={connectionStatus}
                 isInitializing={isInitializing}
                 statusIconProps={getServerStatusIconProps(server.serverName)}
-                onToggle={toggleServerSelection}
+                onToggle={statusOnly ? connectServer : toggleServerSelection}
+                statusOnly={statusOnly}
               />
             ))}
           </div>
@@ -133,7 +165,7 @@ function MCPSelectContent() {
   );
 }
 
-function MCPSelect() {
+function MCPSelect({ statusOnly = false }: MCPSelectProps) {
   const context = useBadgeRowContext();
   const { selectableServers } = context?.mcpServerManager ?? {};
   const canUseMcp = useHasAccess({
@@ -145,7 +177,7 @@ function MCPSelect() {
     return null;
   }
 
-  return <MCPSelectContent />;
+  return <MCPSelectContent statusOnly={statusOnly} />;
 }
 
 export default memo(MCPSelect);

@@ -20,6 +20,8 @@ interface MCPServerMenuItemProps {
   isInitializing?: (serverName: string) => boolean;
   statusIconProps?: MCPServerStatusIconProps | null;
   onToggle: (serverName: string) => void;
+  /** Hide the selection checkbox (connection status only, e.g. for agents with fixed tools) */
+  statusOnly?: boolean;
 }
 
 export default function MCPServerMenuItem({
@@ -29,6 +31,7 @@ export default function MCPServerMenuItem({
   isInitializing,
   statusIconProps,
   onToggle,
+  statusOnly = false,
 }: MCPServerMenuItemProps) {
   const localize = useLocalize();
   const displayName = server.config?.title || server.serverName;
@@ -96,17 +99,19 @@ export default function MCPServerMenuItem({
       )}
 
       {/* Selection Indicator - purely visual, state conveyed by aria-checked on MenuItem */}
-      <span
-        aria-hidden="true"
-        className={cn(
-          'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-sm border',
-          isSelected
-            ? 'border-primary bg-primary text-primary-foreground'
-            : 'border-border-xheavy bg-transparent',
-        )}
-      >
-        {isSelected && <Check className="h-4 w-4" />}
-      </span>
+      {!statusOnly && (
+        <span
+          aria-hidden="true"
+          className={cn(
+            'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-sm border',
+            isSelected
+              ? 'border-primary bg-primary text-primary-foreground'
+              : 'border-border-xheavy bg-transparent',
+          )}
+        >
+          {isSelected && <Check className="h-4 w-4" />}
+        </span>
+      )}
     </Ariakit.MenuItemCheckbox>
   );
 }

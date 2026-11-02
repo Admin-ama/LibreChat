@@ -27,6 +27,8 @@ import store from '~/store';
 
 interface BadgeRowProps {
   showEphemeralBadges?: boolean;
+  /** Agents have fixed tools: show MCP connection status (connect/configure) without selection. */
+  showMCPStatus?: boolean;
   onChange: (badges: Pick<BadgeItem, 'id'>[]) => void;
   onToggle?: (badgeId: string, currentActive: boolean) => void;
   conversationId?: string | null;
@@ -144,6 +146,7 @@ const dragReducer = (state: DragState, action: DragAction): DragState => {
 
 function BadgeRow({
   showEphemeralBadges,
+  showMCPStatus,
   conversationId,
   specName,
   isSubmitting,
@@ -381,6 +384,7 @@ function BadgeRow({
             <MCPSelect />
           </>
         )}
+        {showEphemeralBadges !== true && showMCPStatus === true && <MCPSelect statusOnly />}
         {ghostBadge && (
           <div
             className="ghost-badge h-full"
