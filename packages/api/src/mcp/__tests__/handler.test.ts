@@ -2529,6 +2529,45 @@ describe('MCPOAuthHandler - Configurable OAuth Metadata', () => {
       );
     });
 
+    describe('oauth.prompt on the discovered flow', () => {
+      const startDiscoveredFlow = async (config?: MCPOptions['oauth']) => {
+        mockDiscoverOAuthProtectedResourceMetadata.mockRejectedValueOnce(
+          new Error('No resource metadata'),
+        );
+        mockDiscoverAuthorizationServerMetadata.mockResolvedValueOnce(undefined);
+        mockRegisterClient.mockResolvedValueOnce({
+          client_id: 'dynamic-client-id',
+          redirect_uris: ['http://localhost:3080/api/mcp/test-server/oauth/callback'],
+          logo_uri: undefined,
+          tos_uri: undefined,
+        });
+        mockStartAuthorization.mockResolvedValueOnce({
+          authorizationUrl: new URL(
+            'https://mcp.example.com/authorize?client_id=dynamic-client-id&prompt=consent',
+          ),
+          codeVerifier: 'test-code-verifier',
+        });
+        const { authorizationUrl } = await MCPOAuthHandler.initiateOAuthFlow(
+          'test-server',
+          'https://mcp.example.com',
+          'user-123',
+          {},
+          config,
+        );
+        return new URL(authorizationUrl);
+      };
+
+      it('keeps the SDK prompt when oauth.prompt is not set', async () => {
+        const url = await startDiscoveredFlow({ scope: 'openid offline_access' });
+        expect(url.searchParams.getAll('prompt')).toEqual(['consent']);
+      });
+
+      it("removes the SDK prompt when oauth.prompt is ''", async () => {
+        const url = await startDiscoveredFlow({ scope: 'openid offline_access', prompt: '' });
+        expect(url.searchParams.has('prompt')).toBe(false);
+      });
+    });
+
     it('should throw when metadata discovery fails during refresh (public stored clientInfo)', async () => {
       const metadata = {
         serverName: 'test-server',

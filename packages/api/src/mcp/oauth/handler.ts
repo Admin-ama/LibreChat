@@ -880,6 +880,7 @@ export class MCPOAuthHandler {
         /** Add cryptographic state parameter to the authorization URL */
         authorizationUrl.searchParams.set('state', state);
         logger.debug(`[MCPOAuth] Added state parameter to authorization URL`);
+        this.applyPromptOverride(authorizationUrl, config.prompt);
 
         if (resourceMetadata?.resource) {
           const canonicalResource = new URL(resourceMetadata.resource).href;
@@ -1064,6 +1065,7 @@ export class MCPOAuthHandler {
         /** Add cryptographic state parameter to the authorization URL */
         authorizationUrl.searchParams.set('state', state);
         logger.debug(`[MCPOAuth] Added state parameter to authorization URL`);
+        this.applyPromptOverride(authorizationUrl, config?.prompt);
 
         if (resourceMetadata?.resource) {
           /**
@@ -1315,6 +1317,21 @@ export class MCPOAuthHandler {
    */
   private static generateState(): string {
     return randomBytes(32).toString('base64url');
+  }
+
+  /**
+   * Applies `oauth.prompt` over the SDK-built authorize URL (the SDK appends
+   * `prompt=consent` whenever the scope includes `offline_access`).
+   * Unset keeps the URL untouched; an empty string removes `prompt`.
+   */
+  private static applyPromptOverride(authorizationUrl: URL, prompt?: string): void {
+    if (prompt === undefined) {
+      return;
+    }
+    authorizationUrl.searchParams.delete('prompt');
+    if (prompt !== '') {
+      authorizationUrl.searchParams.set('prompt', prompt);
+    }
   }
 
   /**

@@ -102,6 +102,19 @@ const OAuthOptionsBaseSchema = z.object({
    * Ignored when `audience` itself is not configured.
    */
   forward_audience_on_refresh: z.boolean().optional(),
+  /**
+   * Overrides the OIDC `prompt` parameter of the `/authorize` request.
+   *
+   * The MCP SDK appends `prompt=consent` whenever `scope` contains
+   * `offline_access`. On Microsoft Entra ID that forces the user consent
+   * screen, which non-admin users cannot pass when user consent is disabled
+   * (AADSTS90094), even though the tenant admin already consented.
+   *
+   * - not set: unchanged behavior (whatever the SDK sends)
+   * - `''` (empty string): no `prompt` parameter is sent
+   * - any other value (e.g. `select_account`): sent as the only `prompt`
+   */
+  prompt: z.string().optional(),
   /** OAuth revocation endpoint (optional - can be auto-discovered) */
   revocation_endpoint: z
     .string()
