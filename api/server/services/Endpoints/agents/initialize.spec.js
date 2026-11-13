@@ -668,10 +668,11 @@ describe('initializeClient — subagent loading', () => {
     return agent;
   };
 
-  it('aborts the run when a pure subagent resolves none of its expected MCP tools', async () => {
+  it('skips a pure subagent with no available MCP tools and tells the parent what is missing', async () => {
     const subAgent = await createAgent({
       id: SUBAGENT_ID,
       name: 'Data Subagent',
+      description: 'Consultas al warehouse',
       provider: 'openai',
       model: 'gpt-4',
       author: new mongoose.Types.ObjectId(),
@@ -701,14 +702,18 @@ describe('initializeClient — subagent loading', () => {
         });
       });
 
-    await expect(
-      initializeClient({
-        req: makeSubagentReq(),
-        res: {},
-        signal: new AbortController().signal,
-        endpointOption: makeEndpointOption(),
-      }),
-    ).rejects.toBe(toolError);
+    await initializeClient({
+      req: makeSubagentReq(),
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption: makeEndpointOption(),
+    });
+
+    expect(agentClientArgs.agent.subagentAgentConfigs).toEqual([]);
+    const note = agentClientArgs.agent.additional_instructions;
+    expect(note).toContain('Subagentes no disponibles');
+    expect(note).toContain('"Data Subagent" (Consultas al warehouse)');
+    expect(note).toContain('"warehouse"');
   });
 
   it('loads a configured subagent, populates `subagentAgentConfigs`, and keeps it out of `agentConfigs`', async () => {

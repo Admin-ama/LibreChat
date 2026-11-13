@@ -18,6 +18,7 @@ const {
   buildAgentContextAttachmentsByAgentId,
 } = require('@librechat/api');
 const {
+  Constants,
   Permissions,
   ResourceType,
   EModelEndpoint,
@@ -683,6 +684,38 @@ const initializeClient = async ({
     }
   }
 
+  /** AMA: subagents skipped because none of their MCP tools are available
+   *  for this user (agentId → { name, description, servers }). */
+  const unavailableSubagents = new Map();
+
+  const describeUnavailableSubagent = (agentId, agent) => {
+    const servers = new Set();
+    for (const tool of agent?.tools ?? []) {
+      if (typeof tool !== 'string' || !tool.includes(Constants.mcp_delimiter)) continue;
+      const server = tool.split(Constants.mcp_delimiter).pop();
+      if (server) servers.add(server);
+    }
+    return {
+      name: agent?.name || agentId,
+      description: agent?.description || '',
+      servers: [...servers],
+    };
+  };
+
+  const buildUnavailableSubagentsNote = (items) => {
+    const lines = items.map(({ name, description, servers }) => {
+      const conn = servers.length ? servers.map((s) => `"${s}"`).join(', ') : 'sus conectores';
+      const what = description ? ` (${description.replace(/\s+/g, ' ').slice(0, 300)})` : '';
+      return `- Subagente "${name}"${what}: el usuario no tiene configurado/conectado el conector MCP ${conn}.`;
+    });
+    return [
+      '## Subagentes no disponibles en esta conversación',
+      'Los siguientes subagentes NO se cargaron porque al usuario le falta configurar su conexión (por ejemplo, su token personal):',
+      ...lines,
+      'Si el usuario pide algo que le corresponde a uno de ellos, no lo intentes de otra forma ni inventes el resultado: dile claramente que para eso le falta configurar ese conector (menú de conectores MCP del chat → el conector indicado → guardar su token o conectar) y que luego vuelva a intentarlo. Para todo lo demás, continúa normalmente.',
+    ].join('\n');
+  };
+
   /** Lazy per-id agent loader used for subagents that weren't reachable
    *  via the handoff edge graph (so `discoverConnectedAgents` didn't
    *  initialize them). Mirrors the helper's internal `processAgent`:
@@ -694,8 +727,10 @@ const initializeClient = async ({
     const existing = agentConfigs.get(agentId);
     if (existing) return existing;
 
+    /** @type {Agent | null} */
+    let agent = null;
     try {
-      const agent = await db.getAgent({ id: agentId });
+      agent = await db.getAgent({ id: agentId });
       if (!agent) {
         skippedAgentIds.add(agentId);
         return null;
@@ -805,7 +840,15 @@ const initializeClient = async ({
       return config;
     } catch (err) {
       if (isExpectedMCPToolsUnavailableError(err)) {
-        throw err;
+        /** AMA: a subagent whose MCP servers aren't configured for this user
+         *  (e.g. missing per-user token) must not abort the whole run. Skip
+         *  it and tell the parent agent so it can explain what's missing. */
+        logger.warn(
+          `[processAgent] Subagent ${agentId} has no available MCP tools for this user, skipping`,
+        );
+        unavailableSubagents.set(agentId, describeUnavailableSubagent(agentId, agent));
+        skippedAgentIds.add(agentId);
+        return null;
       }
       logger.error(`[processAgent] Error processing subagent ${agentId}:`, err);
       skippedAgentIds.add(agentId);
@@ -900,7 +943,12 @@ const initializeClient = async ({
 
     /** @type {Array<Object>} */
     const resolved = [];
+    const unavailable = [];
     for (const subagentId of explicitSubagentIds) {
+      if (unavailableSubagents.has(subagentId)) {
+        unavailable.push(unavailableSubagents.get(subagentId));
+        continue;
+      }
       if (skippedAgentIds.has(subagentId)) continue;
 
       /** Cycle guard: a configuration like A ↔ B (B lists A as its
@@ -915,7 +963,12 @@ const initializeClient = async ({
 
       assertSubagentGraphRoom(subagentId);
       const subagentConfig = await loadAgentById(subagentId);
-      if (!subagentConfig) continue;
+      if (!subagentConfig) {
+        if (unavailableSubagents.has(subagentId)) {
+          unavailable.push(unavailableSubagents.get(subagentId));
+        }
+        continue;
+      }
 
       subagentGraphIds.add(subagentConfig.id ?? subagentId);
       resolved.push(subagentConfig);
@@ -926,6 +979,15 @@ const initializeClient = async ({
     }
 
     config.subagentAgentConfigs = resolved;
+
+    if (unavailable.length > 0) {
+      config.additional_instructions = [
+        config.additional_instructions ?? '',
+        buildUnavailableSubagentsNote(unavailable),
+      ]
+        .filter(Boolean)
+        .join('\n\n');
+    }
   };
 
   const maxResolvedDepthByConfigId = new Map();
