@@ -4,6 +4,7 @@ import {
   Bot,
   Brain,
   Bookmark,
+  CalendarClock,
   NotebookPen,
   ScrollText,
   ArrowRightToLine,
@@ -31,6 +32,7 @@ import BookmarkPanel from '~/components/SidePanel/Bookmarks/BookmarkPanel';
 import PanelSwitch from '~/components/SidePanel/Builder/PanelSwitch';
 import Parameters from '~/components/SidePanel/Parameters/Panel';
 import { MemoryPanel } from '~/components/SidePanel/Memories';
+import { TareasPanel, useTareasQuery } from '~/components/SidePanel/Tareas';
 import FilesPanel from '~/components/SidePanel/Files/Panel';
 import { PromptsAccordion } from '~/components/Prompts';
 import { SkillsAccordion } from '~/components/Skills';
@@ -89,6 +91,8 @@ export default function useSideNavLinks({
     permission: Permissions.CREATE,
   });
   const { availableMCPServers } = useMCPServerManager();
+  const { data: tareasData } = useTareasQuery();
+  const tareasHabilitadas = tareasData?.habilitado === true;
 
   const { agentsConfig } = useGetAgentsConfig({ endpointsConfig });
   const { skillsEnabled } = useAgentCapabilities(agentsConfig?.capabilities);
@@ -160,6 +164,16 @@ export default function useSideNavLinks({
       });
     }
 
+    if (tareasHabilitadas) {
+      links.push({
+        title: 'com_sidepanel_my_tasks',
+        label: '',
+        icon: CalendarClock,
+        id: 'tareas',
+        Component: TareasPanel,
+      });
+    }
+
     if (hasAccessToBookmarks) {
       links.push({
         title: 'com_sidepanel_conversation_tags',
@@ -228,6 +242,7 @@ export default function useSideNavLinks({
     skillsEnabled,
     hasAccessToMemories,
     hasAccessToReadMemories,
+    tareasHabilitadas,
     interfaceConfig.parameters,
     endpointType,
     hasAccessToBookmarks,

@@ -21,6 +21,7 @@ const prompts = require('./prompts');
 const skills = require('./skills');
 const balance = require('./balance');
 const usage = require('./usage');
+const tareas = require('./tareas');
 const actions = require('./actions');
 const apiKeys = require('./apiKeys');
 const banner = require('./banner');
@@ -75,6 +76,7 @@ module.exports = {
   presets,
   balance,
   usage,
+  tareas,
   messages,
   memories,
   endpoints,
