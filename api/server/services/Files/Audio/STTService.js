@@ -347,8 +347,14 @@ class STTService {
     };
 
     try {
-      const [provider, sttSchema] = await this.getProviderSchema(req);
+      const [provider, baseSchema] = await this.getProviderSchema(req);
       const language = req.body?.language || '';
+      /** AMA: live dictation previews may use a cheaper model */
+      const isPreview = req.body?.preview === 'true';
+      const sttSchema =
+        isPreview && baseSchema?.previewModel
+          ? { ...baseSchema, model: baseSchema.previewModel }
+          : baseSchema;
       const text = await this.sttRequest(provider, sttSchema, { audioBuffer, audioFile, language });
       res.json({ text });
     } catch (error) {

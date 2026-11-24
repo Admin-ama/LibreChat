@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRecoilState } from 'recoil';
 import { useToastContext } from '@librechat/client';
+import { dataService } from 'librechat-data-provider';
 import { useSpeechToTextMutation } from '~/data-provider';
 import useGetAudioSettings from './useGetAudioSettings';
 import store from '~/store';
@@ -10,7 +11,7 @@ type LivePreviewRecognition = {
   continuous: boolean;
   interimResults: boolean;
   onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
   onend: (() => void) | null;
   start: () => void;
   stop: () => void;
@@ -18,10 +19,20 @@ type LivePreviewRecognition = {
 };
 
 /**
- * AMA: while recording for the external (server-side) STT, show a live preview using the
- * browser's Web Speech API (Chrome/Edge). The preview is replaced by the server
- * transcription when recording stops. Silently disabled where the API is missing.
+ * AMA: while recording for the external (server-side) STT, show a live preview.
+ * - Chrome/Edge: the browser's Web Speech API (instant, free).
+ * - Electron or any browser where Web Speech fails (no Google keys → 'network' error):
+ *   periodically send the audio recorded so far to the server STT with `preview=true`.
+ * The preview is replaced by the full server transcription when recording stops.
  */
+const SERVER_PREVIEW_INTERVAL_MS = 2500;
+const SERVER_PREVIEW_MAX_MS = 120000;
+const SERVER_PREVIEW_MIN_BYTES = 4000;
+const WEB_SPEECH_FATAL_ERRORS = ['network', 'service-not-allowed', 'not-allowed', 'audio-capture'];
+
+const isElectron = () =>
+  typeof navigator !== 'undefined' && /\bElectron\//.test(navigator.userAgent);
+
 const getLivePreviewRecognitionCtor = (): (new () => LivePreviewRecognition) | null => {
   if (typeof window === 'undefined') {
     return null;
@@ -48,6 +59,9 @@ const useSpeechToTextExternal = (
   const audioChunksRef = useRef<Blob[]>([]);
   const livePreviewRef = useRef<LivePreviewRecognition | null>(null);
   const livePreviewActiveRef = useRef(false);
+  const serverPreviewTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const serverPreviewInFlightRef = useRef(false);
+  const serverPreviewStartRef = useRef(0);
   const [permission, setPermission] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isRequestBeingMade, setIsRequestBeingMade] = useState(false);
@@ -120,9 +134,63 @@ const useSpeechToTextExternal = (
     }
   };
 
+  const stopServerPreview = () => {
+    if (serverPreviewTimerRef.current !== null) {
+      clearInterval(serverPreviewTimerRef.current);
+      serverPreviewTimerRef.current = null;
+    }
+  };
+
+  const startServerPreview = () => {
+    if (serverPreviewTimerRef.current !== null) {
+      return;
+    }
+    livePreviewActiveRef.current = true;
+    serverPreviewStartRef.current = Date.now();
+    serverPreviewTimerRef.current = setInterval(() => {
+      if (!livePreviewActiveRef.current) {
+        stopServerPreview();
+        return;
+      }
+      if (Date.now() - serverPreviewStartRef.current > SERVER_PREVIEW_MAX_MS) {
+        stopServerPreview();
+        return;
+      }
+      if (serverPreviewInFlightRef.current) {
+        return;
+      }
+      const mimeType = mediaRecorderRef.current?.mimeType || audioMimeType;
+      const blob = new Blob(audioChunksRef.current, { type: mimeType });
+      if (blob.size < SERVER_PREVIEW_MIN_BYTES) {
+        return;
+      }
+      const formData = new FormData();
+      formData.append('audio', blob, `audio.${getFileExtension(mimeType)}`);
+      if (languageSTT) {
+        formData.append('language', languageSTT);
+      }
+      formData.append('preview', 'true');
+      serverPreviewInFlightRef.current = true;
+      dataService
+        .speechToText(formData)
+        .then((data) => {
+          if (livePreviewActiveRef.current && data?.text) {
+            setText(data.text);
+          }
+        })
+        .catch(() => {
+          /* preview is best-effort */
+        })
+        .finally(() => {
+          serverPreviewInFlightRef.current = false;
+        });
+    }, SERVER_PREVIEW_INTERVAL_MS);
+  };
+
   const startLivePreview = () => {
     const Ctor = getLivePreviewRecognitionCtor();
-    if (!Ctor) {
+    if (!Ctor || isElectron()) {
+      startServerPreview();
       return;
     }
     try {
@@ -143,8 +211,21 @@ const useSpeechToTextExternal = (
           setText(transcript);
         }
       };
-      recognition.onerror = () => {
-        /* preview is best-effort; the server transcription is the source of truth */
+      recognition.onerror = (event) => {
+        /** Web Speech unavailable (e.g. Electron without Google keys) → server preview */
+        if (
+          livePreviewActiveRef.current &&
+          livePreviewRef.current === recognition &&
+          WEB_SPEECH_FATAL_ERRORS.includes(event?.error ?? '')
+        ) {
+          livePreviewRef.current = null;
+          try {
+            recognition.abort();
+          } catch {
+            /* ignore */
+          }
+          startServerPreview();
+        }
       };
       recognition.onend = () => {
         /** Chrome ends recognition after a pause; restart while still recording */
@@ -160,13 +241,14 @@ const useSpeechToTextExternal = (
       livePreviewActiveRef.current = true;
       recognition.start();
     } catch {
-      livePreviewActiveRef.current = false;
       livePreviewRef.current = null;
+      startServerPreview();
     }
   };
 
   const stopLivePreview = () => {
     livePreviewActiveRef.current = false;
+    stopServerPreview();
     const recognition = livePreviewRef.current;
     livePreviewRef.current = null;
     if (recognition) {
@@ -178,6 +260,7 @@ const useSpeechToTextExternal = (
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => stopLivePreview, []);
 
   const cleanup = () => {

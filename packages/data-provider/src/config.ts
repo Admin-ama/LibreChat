@@ -1212,6 +1212,8 @@ const sttOpenaiSchema = z.object({
   apiKey: z.string(),
   apiKeyPreview: apiKeyPreviewSchema,
   model: z.string(),
+  /** AMA: cheaper/faster model used for live dictation previews (`preview=true` requests) */
+  previewModel: z.string().optional(),
 });
 
 const sttAzureOpenAISchema = z.object({
