@@ -5,6 +5,34 @@ import { useSpeechToTextMutation } from '~/data-provider';
 import useGetAudioSettings from './useGetAudioSettings';
 import store from '~/store';
 
+type LivePreviewRecognition = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+};
+
+/**
+ * AMA: while recording for the external (server-side) STT, show a live preview using the
+ * browser's Web Speech API (Chrome/Edge). The preview is replaced by the server
+ * transcription when recording stops. Silently disabled where the API is missing.
+ */
+const getLivePreviewRecognitionCtor = (): (new () => LivePreviewRecognition) | null => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  const w = window as unknown as {
+    SpeechRecognition?: new () => LivePreviewRecognition;
+    webkitSpeechRecognition?: new () => LivePreviewRecognition;
+  };
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+};
+
 const useSpeechToTextExternal = (
   setText: (text: string) => void,
   onTranscriptionComplete: (text: string) => void,
@@ -18,6 +46,8 @@ const useSpeechToTextExternal = (
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 
   const audioChunksRef = useRef<Blob[]>([]);
+  const livePreviewRef = useRef<LivePreviewRecognition | null>(null);
+  const livePreviewActiveRef = useRef(false);
   const [permission, setPermission] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isRequestBeingMade, setIsRequestBeingMade] = useState(false);
@@ -89,6 +119,66 @@ const useSpeechToTextExternal = (
       return 'webm';
     }
   };
+
+  const startLivePreview = () => {
+    const Ctor = getLivePreviewRecognitionCtor();
+    if (!Ctor) {
+      return;
+    }
+    try {
+      const recognition = new Ctor();
+      recognition.lang = languageSTT || navigator.language || 'es';
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.onresult = (event) => {
+        if (!livePreviewActiveRef.current) {
+          return;
+        }
+        let transcript = '';
+        for (let i = 0; i < event.results.length; i++) {
+          transcript += event.results[i][0]?.transcript ?? '';
+        }
+        transcript = transcript.trim();
+        if (transcript) {
+          setText(transcript);
+        }
+      };
+      recognition.onerror = () => {
+        /* preview is best-effort; the server transcription is the source of truth */
+      };
+      recognition.onend = () => {
+        /** Chrome ends recognition after a pause; restart while still recording */
+        if (livePreviewActiveRef.current && livePreviewRef.current === recognition) {
+          try {
+            recognition.start();
+          } catch {
+            /* ignore */
+          }
+        }
+      };
+      livePreviewRef.current = recognition;
+      livePreviewActiveRef.current = true;
+      recognition.start();
+    } catch {
+      livePreviewActiveRef.current = false;
+      livePreviewRef.current = null;
+    }
+  };
+
+  const stopLivePreview = () => {
+    livePreviewActiveRef.current = false;
+    const recognition = livePreviewRef.current;
+    livePreviewRef.current = null;
+    if (recognition) {
+      try {
+        recognition.abort();
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+
+  useEffect(() => stopLivePreview, []);
 
   const cleanup = () => {
     if (mediaRecorderRef.current) {
@@ -190,6 +280,7 @@ const useSpeechToTextExternal = (
           monitorSilence(audioStream.current, stopRecording);
         }
         setIsListening(true);
+        startLivePreview();
       } catch (error) {
         showToast({ message: `Error starting recording: ${error}`, status: 'error' });
       }
@@ -202,6 +293,8 @@ const useSpeechToTextExternal = (
     if (!mediaRecorderRef.current) {
       return;
     }
+
+    stopLivePreview();
 
     if (mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop();
