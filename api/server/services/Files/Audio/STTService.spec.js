@@ -3,7 +3,11 @@ jest.mock('axios');
 jest.mock('form-data');
 jest.mock('https-proxy-agent');
 jest.mock('@librechat/data-schemas', () => ({ logger: { warn: jest.fn(), error: jest.fn() } }));
-jest.mock('@librechat/api', () => ({ genAzureEndpoint: jest.fn(), logAxiosError: jest.fn() }));
+jest.mock('@librechat/api', () => ({
+  genAzureEndpoint: jest.fn(),
+  logAxiosError: jest.fn(),
+  resolveConfigSecret: (v) => v,
+}));
 jest.mock('librechat-data-provider', () => ({
   extractEnvVariable: jest.fn(),
   STTProviders: {},
@@ -144,5 +148,21 @@ describe('STT audio format validation with MIME normalization', () => {
     expect(isFormatAccepted('text/webm')).toBe(false);
     expect(isFormatAccepted('text/plain')).toBe(false);
     expect(isFormatAccepted('application/json')).toBe(false);
+  });
+});
+
+describe('STTService.openAIProvider prompt (AMA)', () => {
+  const service = new STTService();
+  const schema = { apiKey: 'sk', model: 'openai/gpt-4o-transcribe' };
+
+  it('sends the configured prompt as vocabulary hint', () => {
+    const [, data] = service.openAIProvider({ ...schema, prompt: 'Términos: Huly' }, {}, {}, 'es');
+    expect(data.prompt).toBe('Términos: Huly');
+    expect(data.language).toBe('es');
+  });
+
+  it('omits prompt when not configured', () => {
+    const [, data] = service.openAIProvider(schema, {}, {}, 'es');
+    expect(data).not.toHaveProperty('prompt');
   });
 });

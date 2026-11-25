@@ -1214,6 +1214,8 @@ const sttOpenaiSchema = z.object({
   model: z.string(),
   /** AMA: cheaper/faster model used for live dictation previews (`preview=true` requests) */
   previewModel: z.string().optional(),
+  /** AMA: vocabulary/context hint sent as `prompt` to the transcription API (proper nouns like "Huly") */
+  prompt: z.string().optional(),
 });
 
 const sttAzureOpenAISchema = z.object({

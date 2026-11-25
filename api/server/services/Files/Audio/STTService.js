@@ -212,6 +212,11 @@ class STTService {
       data.language = validLanguage;
     }
 
+    /** AMA: glossary of proper nouns so e.g. "Huly" is not transcribed as "Juli"/"julio" */
+    if (sttSchema?.prompt) {
+      data.prompt = sttSchema.prompt;
+    }
+
     const headers = {
       'Content-Type': 'multipart/form-data',
       ...(apiKey && { Authorization: `Bearer ${apiKey}` }),
