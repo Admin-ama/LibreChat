@@ -77,8 +77,10 @@ jest.mock('../ActionService', () => ({
 jest.mock('~/server/services/Threads', () => ({
   recordUsage: jest.fn(),
 }));
+const mockFindToken = jest.fn();
 jest.mock('~/models', () => ({
   findPluginAuthsByKeys: jest.fn(),
+  findToken: (...args) => mockFindToken(...args),
 }));
 jest.mock('~/config', () => ({
   getFlowStateManager: jest.fn(() => mockFlowManager),
@@ -147,6 +149,7 @@ describe('ToolService - Action Capability Gating', () => {
       hasDeferredTools: false,
     });
     mockLoadToolsUtil.mockResolvedValue({ loadedTools: [], toolContextMap: {} });
+    mockFindToken.mockResolvedValue({ token: 'stored' });
     mockLoadActionSets.mockResolvedValue([]);
     mockGetMCPServerTools.mockResolvedValue(null);
     mockGetCachedTools.mockResolvedValue(null);
@@ -605,6 +608,41 @@ describe('ToolService - Action Capability Gating', () => {
         'step_oauth_login_ELI',
         'step_oauth_login_Vespa',
       ]);
+    });
+
+    it('AMA: does not wait for OAuth on servers the user never connected', async () => {
+      const req = createMockReq([AgentCapabilities.tools]);
+      const res = { writableEnded: false };
+      mockGetEndpointsConfig.mockResolvedValue(createEndpointsConfig([AgentCapabilities.tools]));
+      mockResolveConfigServers.mockResolvedValue({
+        metabase: { type: 'streamable-http', url: 'https://mb.example.com/mcp', requiresOAuth: true },
+      });
+      mockFindToken.mockResolvedValue(null);
+      mockLoadToolDefinitions.mockImplementation(async (_args, deps) => {
+        await deps.getOrFetchMCPServerTools(req.user.id, 'metabase');
+        return { toolDefinitions: [], toolRegistry: new Map(), hasDeferredTools: false };
+      });
+      reinitMCPServer.mockImplementation(async ({ oauthStart }) => {
+        await oauthStart('https://auth.example.com/metabase');
+        return { availableTools: null };
+      });
+
+      const result = await loadAgentTools({
+        req,
+        res,
+        agent: { id: 'agent_123', tools: [`search${Constants.mcp_delimiter}metabase`] },
+        definitionsOnly: true,
+      });
+
+      expect(reinitMCPServer).toHaveBeenCalledTimes(1);
+      expect(reinitMCPServer).not.toHaveBeenCalledWith(
+        expect.objectContaining({ returnOnOAuth: false }),
+      );
+      expect(mockSendEvent).not.toHaveBeenCalled();
+      expect(result.toolContextMap.ama_unconnected_mcp).toContain('"metabase"');
+      expect(mockFindToken).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'mcp_oauth', identifier: 'mcp:metabase' }),
+      );
     });
 
     it('fences resumable MCP OAuth definition events to the owning job epoch', async () => {

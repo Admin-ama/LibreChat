@@ -82,7 +82,7 @@ const {
 const { getMCPRequestContext } = require('~/server/services/MCPRequestContext');
 const { recordUsage } = require('~/server/services/Threads');
 const { loadTools } = require('~/app/clients/tools/util');
-const { findPluginAuthsByKeys } = require('~/models');
+const { findPluginAuthsByKeys, findToken } = require('~/models');
 const { getFlowStateManager, getMCPServersRegistry } = require('~/config');
 const { getLogStores } = require('~/cache');
 
@@ -1047,6 +1047,41 @@ async function loadToolDefinitionsWrapper({
     }
   }
 
+  /** AMA: OAuth servers the user has NEVER connected (no stored access or
+   *  refresh token) must not block the conversation waiting for a sign-in.
+   *  They are skipped and the agent is told which connectors are missing, so
+   *  it can explain how to connect them only if the user asks for them. */
+  const unconnectedOAuthServers = [];
+  if (pendingOAuthServers.size > 0 && typeof findToken === 'function') {
+    for (const serverName of Array.from(pendingOAuthServers)) {
+      try {
+        const [accessToken, refreshToken] = await Promise.all([
+          findToken({ userId: req.user.id, type: 'mcp_oauth', identifier: `mcp:${serverName}` }),
+          findToken({
+            userId: req.user.id,
+            type: 'mcp_oauth',
+            identifier: `mcp:${serverName}:refresh`,
+          }),
+        ]);
+        if (accessToken == null && refreshToken == null) {
+          pendingOAuthServers.delete(serverName);
+          pendingOAuthStarts.delete(serverName);
+          unconnectedOAuthServers.push(serverName);
+        }
+      } catch (error) {
+        logger.debug(
+          `[Tool Definitions] Could not check stored OAuth tokens for ${serverName}:`,
+          error?.message,
+        );
+      }
+    }
+    if (unconnectedOAuthServers.length > 0) {
+      logger.info(
+        `[Tool Definitions] Skipping never-connected OAuth server(s) without waiting: ${unconnectedOAuthServers.join(', ')}`,
+      );
+    }
+  }
+
   if (pendingOAuthServers.size > 0 && (res || streamId)) {
     const serverNames = Array.from(pendingOAuthServers);
     logger.info(
@@ -1131,6 +1166,14 @@ async function loadToolDefinitionsWrapper({
   const toolContextMap = {};
   /** @type {Record<string, string>} */
   const dynamicToolContextMap = {};
+  if (unconnectedOAuthServers.length > 0) {
+    const list = unconnectedOAuthServers.map((s) => `"${s}"`).join(', ');
+    toolContextMap.ama_unconnected_mcp = [
+      '## Conectores no conectados',
+      `El usuario todavía no ha conectado (iniciado sesión en) estos conectores MCP: ${list}. Sus herramientas no están disponibles en esta conversación.`,
+      'No lo menciones si el usuario no lo necesita. Si pide algo que requiere uno de ellos, no inventes el resultado: dile que primero debe conectarlo desde el menú de conectores MCP del chat (clic en el conector → iniciar sesión) y luego volver a intentarlo. Para todo lo demás, continúa normalmente.',
+    ].join('\n');
+  }
   const hasWebSearch = filteredTools.includes(Tools.web_search);
   const hasFileSearch = filteredTools.includes(Tools.file_search);
   const hasExecuteCode = filteredTools.includes(Tools.execute_code);
