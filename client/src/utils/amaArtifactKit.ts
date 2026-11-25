@@ -71,8 +71,10 @@ const cssVars = (t: ThemeTokens) =>
     ...t.series.map((c, i) => `--ama-series-${i + 1}:${c}`),
   ].join(';');
 
-const FONT_LINK =
-  '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:opsz,wght@6..12,300..800&display=swap" rel="stylesheet">';
+const FONT_HREF =
+  'https://fonts.googleapis.com/css2?family=Nunito+Sans:opsz,wght@6..12,300..800&display=swap';
+
+const FONT_LINK = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="${FONT_HREF}" rel="stylesheet">`;
 
 const FONT_STACK = `'Nunito Sans','Museo Sans','Helvetica Neue',Helvetica,Arial,sans-serif`;
 
@@ -80,11 +82,47 @@ const FONT_STACK = `'Nunito Sans','Museo Sans','Helvetica Neue',Helvetica,Arial,
 export const AMA_BASE_CSS = [
   `:root{${cssVars(AMA_COLORS.light)};color-scheme:light}`,
   `html.dark{${cssVars(AMA_COLORS.dark)};color-scheme:dark}`,
-  `:where(html,body){background:var(--ama-bg);color:var(--ama-text);font-family:${FONT_STACK};-webkit-font-smoothing:antialiased;margin:0}`,
+  `:root,:root body{background:var(--ama-bg);color:var(--ama-text);font-family:${FONT_STACK};-webkit-font-smoothing:antialiased;margin:0}`,
   `:where(h1,h2,h3,h4){color:var(--ama-heading);letter-spacing:-.01em}`,
   `::-webkit-scrollbar{height:.5rem;width:.5rem}::-webkit-scrollbar-thumb{background-color:var(--ama-border);border-radius:9999px}::-webkit-scrollbar-track{background:transparent}`,
   `*{scrollbar-width:thin;scrollbar-color:var(--ama-border) transparent}`,
 ].join('\n');
+
+/** `ama-*` color tokens (theme-aware CSS variables + fixed brand colors). */
+const TOKEN_VALUES: Record<string, string> = {
+  bg: 'var(--ama-bg)',
+  surface: 'var(--ama-surface)',
+  card: 'var(--ama-card)',
+  border: 'var(--ama-border)',
+  grid: 'var(--ama-grid)',
+  text: 'var(--ama-text)',
+  heading: 'var(--ama-heading)',
+  muted: 'var(--ama-muted)',
+  primary: 'var(--ama-primary)',
+  accent: 'var(--ama-accent)',
+  positive: 'var(--ama-positive)',
+  negative: 'var(--ama-negative)',
+  warning: 'var(--ama-warning)',
+  green: '#00504D',
+  mid: '#1DAA75',
+  olive: '#8AB351',
+  light: '#80C5A0',
+  pale: '#B6D7A8',
+  forest: '#004418',
+  gray: '#727574',
+};
+
+/**
+ * Plain-CSS equivalents of the `bg-ama-*`, `text-ama-*`, `border-ama-*`,
+ * `ring-ama-*` and `hover:` Tailwind classes, so they work even when the
+ * sandbox ignores our Tailwind config.
+ */
+const AMA_UTILITY_CSS = Object.entries(TOKEN_VALUES)
+  .map(
+    ([n, v]) =>
+      `.bg-ama-${n}{background-color:${v}}.text-ama-${n}{color:${v}}.border-ama-${n}{border-color:${v}}.ring-ama-${n}{--tw-ring-color:${v}}.hover\\:bg-ama-${n}:hover{background-color:${v}}.hover\\:text-ama-${n}:hover{color:${v}}`,
+  )
+  .join('\n');
 
 /** Helper classes for plain-HTML artifacts. */
 const AMA_HTML_CLASSES = [
@@ -139,13 +177,10 @@ export function injectAmaHtmlBase(html: string, isDark: boolean): string {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">${block}</head><body>${html}</body></html>`;
 }
 
-const TAILWIND_CONFIG = `tailwind.config={darkMode:'class',theme:{extend:{fontFamily:{sans:[${FONT_STACK.split(
-  ',',
-)
-  .map((f) => (f.startsWith("'") ? f : `'${f}'`))
-  .join(
-    ',',
-  )}]},colors:{ama:{bg:'var(--ama-bg)',surface:'var(--ama-surface)',card:'var(--ama-card)',border:'var(--ama-border)',grid:'var(--ama-grid)',text:'var(--ama-text)',heading:'var(--ama-heading)',muted:'var(--ama-muted)',primary:'var(--ama-primary)',accent:'var(--ama-accent)',positive:'var(--ama-positive)',negative:'var(--ama-negative)',warning:'var(--ama-warning)',green:'#00504D',mid:'#1DAA75',olive:'#8AB351',light:'#80C5A0',pale:'#B6D7A8',forest:'#004418',gray:'#727574'}}}}}`;
+const TAILWIND_CONFIG = `tailwind.config=${JSON.stringify({
+  darkMode: 'class',
+  theme: { extend: { colors: { ama: TOKEN_VALUES } } },
+})}`;
 
 /** `/public/index.html` for the react-ts artifact sandbox. */
 export function buildAmaIndexHtml(isDark: boolean): string {
@@ -158,7 +193,7 @@ export function buildAmaIndexHtml(isDark: boolean): string {
     ${FONT_LINK}
     <script src="https://cdn.tailwindcss.com/3.4.17"></script>
     <script>${TAILWIND_CONFIG}</script>
-    <style>${AMA_BASE_CSS}</style>
+    <style>${AMA_BASE_CSS}\n${AMA_UTILITY_CSS}</style>
   </head>
   <body>
     <div id="root"></div>
@@ -166,8 +201,41 @@ export function buildAmaIndexHtml(isDark: boolean): string {
 </html>`;
 }
 
-/** React component library served at `/components/ama.tsx`. */
-export const amaKitSource = String.raw`
+/**
+ * Runs when the kit module loads inside the sandbox: syncs the LibreChat
+ * light/dark theme and injects tokens, `ama-*` utilities and the brand font.
+ * Does not rely on the sandbox `index.html`, which Sandpack may not use.
+ */
+const kitSetup = (isDark: boolean) => `
+const AMA_DARK = ${isDark};
+(function amaSetup() {
+  if (typeof document === 'undefined') return;
+  document.documentElement.classList.toggle('dark', AMA_DARK);
+  let style = document.getElementById('ama-ds');
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'ama-ds';
+    document.head.appendChild(style);
+  }
+  style.textContent = ${JSON.stringify(`${AMA_BASE_CSS}
+${AMA_UTILITY_CSS}
+.ama-root{font-family:${FONT_STACK}}`)};
+  if (!document.getElementById('ama-font')) {
+    const font = document.createElement('link');
+    font.id = 'ama-font';
+    font.rel = 'stylesheet';
+    font.href = ${JSON.stringify(FONT_HREF)};
+    document.head.appendChild(font);
+  }
+})();
+`;
+
+/** React component library served at `/components/ama.tsx`, for the given theme. */
+export function buildAmaKitSource(isDark: boolean): string {
+  return amaKitSource.replace('/*__AMA_SETUP__*/', () => kitSetup(isDark));
+}
+
+const amaKitSource = String.raw`
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ResponsiveContainer,
@@ -188,6 +256,8 @@ import {
   ReferenceLine,
 } from 'recharts';
 
+/*__AMA_SETUP__*/
+
 /* ───────────────────────── tokens & theme ───────────────────────── */
 
 export const brand = {
@@ -203,7 +273,7 @@ export const brand = {
 const THEMES: any = ${JSON.stringify(AMA_COLORS)};
 
 const readDark = () =>
-  typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+  typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : AMA_DARK;
 
 /** Current AMA theme tokens (re-renders if the light/dark class changes). */
 export function useAmaTheme() {
@@ -247,7 +317,7 @@ const cx = (...c: any[]) => c.filter(Boolean).join(' ');
 
 export function Page({ title, subtitle, eyebrow, source, updated, actions, wide = false, children }: any) {
   return (
-    <div className="min-h-screen bg-ama-bg font-sans text-ama-text antialiased">
+    <div className="ama-root min-h-screen bg-ama-bg text-ama-text antialiased">
       <div className={cx('mx-auto px-5 py-6 sm:px-8 sm:py-8', wide ? 'max-w-7xl' : 'max-w-6xl')}>
         {(title || subtitle || eyebrow || actions) && (
           <header className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-ama-border pb-5">
@@ -286,7 +356,7 @@ export function Page({ title, subtitle, eyebrow, source, updated, actions, wide 
 const GRID_COLS: any = {
   1: 'grid-cols-1',
   2: 'grid-cols-1 sm:grid-cols-2',
-  3: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',
+  3: 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3',
   4: 'grid-cols-2 md:grid-cols-4',
   5: 'grid-cols-2 md:grid-cols-3 lg:grid-cols-5',
 };

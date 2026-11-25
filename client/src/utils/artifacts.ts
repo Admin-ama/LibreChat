@@ -1,5 +1,5 @@
 import { excelMimeTypes, shadcnComponents } from 'librechat-data-provider';
-import { amaKitSource, buildAmaIndexHtml } from './amaArtifactKit';
+import { buildAmaKitSource, buildAmaIndexHtml } from './amaArtifactKit';
 import type {
   SandpackProviderProps,
   SandpackPredefinedTemplate,
@@ -959,7 +959,7 @@ export function getSharedFiles(isDark: boolean): typeof sharedFiles & {
 } {
   return {
     ...sharedFiles,
-    '/components/ama.tsx': amaKitSource,
+    '/components/ama.tsx': buildAmaKitSource(isDark),
     '/public/index.html': buildAmaIndexHtml(isDark),
   };
 }
