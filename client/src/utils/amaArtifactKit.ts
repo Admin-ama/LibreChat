@@ -2,7 +2,7 @@
  * AMA design system for artifacts ("AMA kit").
  *
  * - `amaKitSource` is injected into every React (react-ts) artifact sandbox as
- *   `/components/ama/index.tsx`, so the model can `import { Page, Kpi, BarChart, … }
+ *   `/components/ama.tsx`, so the model can `import { Page, Kpi, BarChart, … }
  *   from '/components/ama'` and get on-brand, theme-aware charts and layouts.
  * - `buildAmaIndexHtml` is the sandbox `/public/index.html` (Tailwind config with
  *   `ama-*` color tokens bound to CSS variables, brand font, light/dark class).
@@ -166,7 +166,7 @@ export function buildAmaIndexHtml(isDark: boolean): string {
 </html>`;
 }
 
-/** React component library served at `/components/ama/index.tsx`. */
+/** React component library served at `/components/ama.tsx`. */
 export const amaKitSource = String.raw`
 import React, { useEffect, useMemo, useState } from 'react';
 import {

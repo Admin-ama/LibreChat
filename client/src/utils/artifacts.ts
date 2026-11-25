@@ -954,12 +954,12 @@ export const sharedFiles = {
 
 /** Shadcn components + AMA design-system kit + theme-aware sandbox `index.html`. */
 export function getSharedFiles(isDark: boolean): typeof sharedFiles & {
-  '/components/ama/index.tsx': string;
+  '/components/ama.tsx': string;
   '/public/index.html': string;
 } {
   return {
     ...sharedFiles,
-    '/components/ama/index.tsx': amaKitSource,
+    '/components/ama.tsx': amaKitSource,
     '/public/index.html': buildAmaIndexHtml(isDark),
   };
 }
