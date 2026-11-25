@@ -38,7 +38,7 @@ export default function ArtifactTabs({
     lastIdRef.current = artifact.id;
   }, [setCurrentCode, artifact.id]);
 
-  const { files, fileKey, template, sharedProps } = useArtifactProps({ artifact });
+  const { files, fileKey, template, sharedProps, transformCode } = useArtifactProps({ artifact });
 
   return (
     <div className="flex h-full w-full flex-col">
@@ -63,6 +63,7 @@ export default function ArtifactTabs({
           previewRef={previewRef}
           sharedProps={sharedProps}
           currentCode={currentCode}
+          transformCode={transformCode}
           startupConfig={resolvedStartupConfig}
         />
       </Tabs.Content>

@@ -12,11 +12,20 @@ import {
   TOOL_ARTIFACT_TYPES,
 } from '~/utils/artifacts';
 import { getMarkdownFiles } from '~/utils/markdown';
+import { injectAmaHtmlBase } from '~/utils/amaArtifactKit';
 import { getMermaidFiles } from '~/utils/mermaid';
 
 export default function useArtifactProps({ artifact }: { artifact: Artifact }) {
   const { theme } = useContext(ThemeContext);
   const isDarkMode = isDark(theme);
+
+  const transformCode = useMemo(() => {
+    const type = artifact.type ?? '';
+    if (type !== 'text/html' && type !== 'application/vnd.code-html') {
+      return undefined;
+    }
+    return (code: string) => injectAmaHtmlBase(code, isDarkMode);
+  }, [artifact.type, isDarkMode]);
 
   const [fileKey, files] = useMemo(() => {
     const key = getKey(artifact.type ?? '', artifact.language);
@@ -62,10 +71,18 @@ export default function useArtifactProps({ artifact }: { artifact: Artifact }) {
 
     const fileKey = getArtifactFilename(artifact.type ?? '', artifact.language);
     const files = removeNullishValues({
-      [fileKey]: artifact.content,
+      [fileKey]:
+        transformCode && artifact.content ? transformCode(artifact.content) : artifact.content,
     });
     return [fileKey, files];
-  }, [artifact.type, artifact.content, artifact.language, artifact.title, isDarkMode]);
+  }, [
+    artifact.type,
+    artifact.content,
+    artifact.language,
+    artifact.title,
+    isDarkMode,
+    transformCode,
+  ]);
 
   const template = useMemo(
     () => getTemplate(artifact.type ?? '', artifact.language),
@@ -79,5 +96,6 @@ export default function useArtifactProps({ artifact }: { artifact: Artifact }) {
     fileKey,
     template,
     sharedProps,
+    transformCode,
   };
 }

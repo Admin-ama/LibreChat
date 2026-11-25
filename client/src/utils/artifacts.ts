@@ -1,5 +1,5 @@
-import dedent from 'dedent';
 import { excelMimeTypes, shadcnComponents } from 'librechat-data-provider';
+import { amaKitSource, buildAmaIndexHtml } from './amaArtifactKit';
 import type {
   SandpackProviderProps,
   SandpackPredefinedTemplate,
@@ -950,26 +950,16 @@ export const sharedFiles = {
   '/components/ui/toggle.tsx': shadcnComponents.toggle,
   '/components/ui/tooltip.tsx': shadcnComponents.tooltip,
   '/components/ui/use-toast.tsx': shadcnComponents.useToast,
-  '/public/index.html': dedent`
-    <!DOCTYPE html>
-    <html lang="en">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Document</title>
-        <script src="https://cdn.tailwindcss.com/3.4.17"></script>
-        <style>
-          ::-webkit-scrollbar{height:.1em;width:.5rem}
-          ::-webkit-scrollbar-thumb{background-color:rgba(0,0,0,.1);border-radius:9999px}
-          ::-webkit-scrollbar-track{background-color:transparent;border-radius:9999px}
-          @media(prefers-color-scheme:dark){::-webkit-scrollbar-thumb{background-color:hsla(0,0%,100%,.1)}}
-          *{scrollbar-width:thin;scrollbar-color:rgba(0,0,0,.1) transparent}
-          @media(prefers-color-scheme:dark){*{scrollbar-color:hsla(0,0%,100%,.1) transparent}}
-        </style>
-      </head>
-      <body>
-        <div id="root"></div>
-      </body>
-    </html>
-  `,
 };
+
+/** Shadcn components + AMA design-system kit + theme-aware sandbox `index.html`. */
+export function getSharedFiles(isDark: boolean): typeof sharedFiles & {
+  '/components/ama/index.tsx': string;
+  '/public/index.html': string;
+} {
+  return {
+    ...sharedFiles,
+    '/components/ama/index.tsx': amaKitSource,
+    '/public/index.html': buildAmaIndexHtml(isDark),
+  };
+}

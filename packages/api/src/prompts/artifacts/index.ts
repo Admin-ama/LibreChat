@@ -2,6 +2,7 @@ import dedent from 'dedent';
 import { EModelEndpoint, ArtifactModes } from 'librechat-data-provider';
 import { generateShadcnPrompt } from './generate';
 import { components } from './components';
+import { amaDesignPrompt } from './design';
 
 const artifactsPrompt = dedent`The assistant can create and reference artifacts during conversations.
   
@@ -140,7 +141,7 @@ Here are some examples of correct usage of artifacts:
         return (
           <div className="p-4">
             <p className="mb-2">Count: {count}</p>
-            <button className="bg-blue-500 text-white px-4 py-2 rounded" onClick={() => setCount(count + 1)}>
+            <button className="bg-ama-primary text-white px-4 py-2 rounded" onClick={() => setCount(count + 1)}>
               Increment
             </button>
           </div>
@@ -344,7 +345,7 @@ Here are some examples of correct usage of artifacts:
         return (
           <div className="p-4">
             <p className="mb-2">Count: {count}</p>
-            <button className="bg-blue-500 text-white px-4 py-2 rounded" onClick={() => setCount(count + 1)}>
+            <button className="bg-ama-primary text-white px-4 py-2 rounded" onClick={() => setCount(count + 1)}>
               Increment
             </button>
           </div>
@@ -422,5 +423,5 @@ export function generateArtifactsPrompt(params: {
     prompt += generateShadcnPrompt({ components, useXML: endpoint === EModelEndpoint.anthropic });
   }
 
-  return prompt;
+  return prompt + amaDesignPrompt;
 }
