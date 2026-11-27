@@ -13,7 +13,7 @@ import { Spinner } from '@librechat/client';
 import { AutoSizer, CellMeasurer, CellMeasurerCache, List } from 'react-virtualized';
 import type { TConversation } from 'librechat-data-provider';
 import type { MeasuredCellParent } from '~/components/Conversations/Conversations';
-import ConversationEndpointIcon from '~/components/Conversations/ConversationEndpointIcon';
+import ConversationTopicIcon from '~/components/Conversations/ConversationTopicIcon';
 import { areConversationRenderPropsEqual } from '~/components/Conversations/utils';
 import { DateLabel } from '~/components/Conversations/Conversations';
 import { useLocalize, useNavigateToConvo } from '~/hooks';
@@ -88,7 +88,7 @@ const ConversationRow = memo(
         onClick={() => navigateToConvo(conversation)}
       >
         <span className="flex h-8 w-8 shrink-0 items-center justify-center">
-          <ConversationEndpointIcon conversation={conversation} size={24} context="menu-item" />
+          <ConversationTopicIcon title={conversation.title} size={20} />
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-text-primary">{title}</span>
